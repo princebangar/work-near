@@ -322,7 +322,7 @@ function CategoriesPage() {
       <PageHead title="Categories & skills" action={<Button onClick={() => setOpen(true)}>+ Add category</Button>} />
       <DataTable loading={isLoading} rows={data}
         cols={[
-          { key: 'name', label: 'Category', render: (c) => <span className="flex items-center gap-2"><span className="grid size-9 place-items-center rounded-lg" style={{ background: c.tint }}><CategoryIcon name={c.icon} size={18} /></span><b>{c.name}</b></span> },
+          { key: 'name', label: 'Category', render: (c) => <span className="flex items-center gap-2"><span className="grid size-9 place-items-center rounded-lg bg-surface-3 text-ink-2"><CategoryIcon name={c.icon} size={18} /></span><b>{c.name}</b></span> },
           { key: 'hi', label: 'Hindi label', render: (c) => c.nameHi },
           { key: 'workers', label: 'Workers', render: (c) => num(c.workerCount) },
           { key: 'active', label: 'Active', render: () => <Toggle checked onChange={() => toast('Category status updated')} /> },

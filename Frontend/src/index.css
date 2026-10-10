@@ -13,6 +13,7 @@
   --c-bg: #f5f6fa;
   --c-surface: #ffffff;
   --c-surface-2: #f1f3f8;
+  --c-surface-3: #e8ebf1;
   --c-ink: #0f172a;
   --c-ink-2: #475569;
   --c-ink-3: #94a3b8;
@@ -36,6 +37,7 @@
   --color-bg: var(--c-bg);
   --color-surface: var(--c-surface);
   --color-surface-2: var(--c-surface-2);
+  --color-surface-3: var(--c-surface-3);
   --color-ink: var(--c-ink);
   --color-ink-2: var(--c-ink-2);
   --color-ink-3: var(--c-ink-3);

@@ -75,7 +75,7 @@ function CustomerHome() {
             {cats.isLoading && Array.from({ length: 8 }, (_, i) => <Skeleton key={i} className="h-20" />)}
             {cats.data?.slice(0, 8).map((c) => (
               <button key={c.id} onClick={() => nav(`/search?cat=${c.id}`)} className="flex flex-col items-center gap-1.5">
-                <span className="grid size-15 place-items-center rounded-2xl text-ink" style={{ background: c.tint }}><CategoryIcon name={c.icon} size={26} /></span>
+                <span className="grid size-15 place-items-center rounded-2xl bg-surface-3 text-ink-2"><CategoryIcon name={c.icon} size={26} /></span>
                 <span className="text-center text-xs leading-tight font-semibold">{lang === 'hi' ? c.nameHi : c.name}</span>
               </button>
             ))}
