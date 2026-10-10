@@ -62,7 +62,7 @@ export function ChatThread() {
   const [menu, setMenu] = useState(false);
   const [report, setReport] = useState(false);
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [msgs?.length]);
+  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [msgs?.length]);
 
   const submit = () => {
     const v = text.trim();

@@ -134,6 +134,8 @@ const routes: Record<string, Handler> = {
     complaints.unshift(c);
     return c;
   },
+  'POST /me/push-tokens': () => ({ registered: true }),
+  'DELETE /me/push-tokens': () => null,
   'GET /blocked': () => db.conversations.filter((c) => c.blocked).map((c) => c.peer),
 
   // ---------- Admin ----------

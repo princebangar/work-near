@@ -1,6 +1,7 @@
 // Data layer: fetchers + React Query hooks. UI-agnostic → reusable in React Native as-is.
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { http } from '@/lib/http';
+import { getPushToken, rememberPushToken, savedPushToken } from '@/lib/push';
 import type * as T from '@/types';
 
 export const qk = {
@@ -129,6 +130,28 @@ export function useCreateComplaint() {
   });
 }
 export const useBlocked = () => useQuery({ queryKey: qk.blocked, queryFn: () => http.get<T.Peer[]>('/blocked') });
+
+// ---------- Push notifications ----------
+/** Gets the FCM token (asking permission only if prompt=true) and registers it — skips the API call when unchanged. */
+export const useEnablePush = () =>
+  useMutation({
+    mutationFn: async (prompt: boolean) => {
+      const token = await getPushToken(prompt);
+      if (token && token !== savedPushToken()) {
+        await http.post('/me/push-tokens', { token, platform: 'web' });
+        rememberPushToken(token);
+      }
+      return token;
+    },
+  });
+
+/** Call before logout so this device stops receiving the user's notifications. */
+export function unregisterPush() {
+  const token = savedPushToken();
+  if (!token) return Promise.resolve();
+  rememberPushToken(null);
+  return http.del('/me/push-tokens', { token }).catch(() => undefined);
+}
 
 // ---------- Admin ----------
 export const useAdminLogin = () =>

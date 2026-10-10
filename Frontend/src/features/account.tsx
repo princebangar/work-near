@@ -1,10 +1,12 @@
 import { useState, type ReactNode } from 'react';
+import { BellRing } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router';
 import {
   Bell, Check, ChevronRight, CreditCard, FileText, Globe, HelpCircle, LogOut, Repeat, Shield, ShieldCheck, Trash2, UserX, Crown, Mail, MessageSquareWarning, ChevronDown,
 } from 'lucide-react';
 import { Avatar, Badge, Button, Card, Chip, EmptyState, Input, Sheet, Skeleton, Textarea, Toggle, TopBar, type Tone } from '@/components/ui';
-import { useBlocked, useCheckout, useCreateComplaint, useFaqs, useMyComplaints, useMySubscription, usePlans, useUpdateConversation, useConversations, useUpdateMe } from '@/api';
+import { useBlocked, useCheckout, useCreateComplaint, useFaqs, useMyComplaints, useMySubscription, usePlans, useUpdateConversation, useConversations, useUpdateMe, useEnablePush, unregisterPush } from '@/api';
+import { pushState, type PushState } from '@/lib/push';
 import { useAuth, usePrefs, toast } from '@/store';
 import { useT } from '@/i18n';
 import { APP } from '@/config/env';
@@ -28,7 +30,7 @@ export function Account() {
   const sub = useMySubscription();
   const [confirm, setConfirm] = useState<'logout' | 'delete' | null>(null);
   const isWorker = user?.activeRole === 'worker';
-  const doLogout = () => { logout(); queryClient.clear(); nav('/login', { replace: true }); };
+  const doLogout = () => { void unregisterPush(); logout(); queryClient.clear(); nav('/login', { replace: true }); };
   return (
     <div>
       <TopBar back={false} title={t('account')} />
@@ -161,6 +163,33 @@ export function EditProfile() {
   );
 }
 
+/** Device-level push permission. Browser permission can only be requested from a user tap. */
+function PushRow() {
+  const [state, setState] = useState<PushState>(pushState);
+  const enable = useEnablePush();
+  const turnOn = () =>
+    enable.mutate(true, {
+      onSuccess: (token) => {
+        setState(pushState());
+        toast(token ? 'Push notifications enabled' : 'Permission not granted', token ? 'success' : 'error');
+      },
+      onError: () => toast('Could not enable push notifications', 'error'),
+    });
+  const sub = {
+    granted: 'On for this device',
+    default: 'Get chat & account alerts even when the app is closed',
+    denied: 'Blocked — allow notifications for this site in browser settings',
+    unsupported: 'Not supported in this browser (needs HTTPS or localhost)',
+  }[state];
+  return (
+    <div className="flex items-center gap-3 border-b border-line bg-primary-soft/40 px-4 py-4">
+      <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary-soft text-primary"><BellRing size={20} /></span>
+      <div className="min-w-0 flex-1"><b className="block">Push notifications</b><span className="text-sm text-ink-2">{sub}</span></div>
+      {state === 'granted' ? <Badge tone="success">On</Badge> : state === 'default' ? <Button size="sm" loading={enable.isPending} onClick={turnOn}>Enable</Button> : null}
+    </div>
+  );
+}
+
 export function NotificationSettings() {
   const t = useT();
   const { notif, setNotif } = usePrefs();
@@ -172,6 +201,7 @@ export function NotificationSettings() {
   return (
     <div className="min-h-dvh bg-surface">
       <TopBar title={t('notificationSettings')} />
+      <PushRow />
       <div className="divide-y divide-line">
         {rows.map(([k, a, b]) => (
           <div key={k} className="flex items-center gap-3 px-4 py-4">

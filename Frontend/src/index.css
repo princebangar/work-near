@@ -77,15 +77,21 @@
 @utility animate-sheet { animation: sheet-up 0.25s cubic-bezier(0.2, 0.8, 0.2, 1); }
 @utility animate-fade { animation: fade-in 0.2s ease-out; }
 
-/* Inside the desktop phone frame, viewport-height screens fill the frame instead of the window. */
-@media (min-width: 640px) {
-  .app-frame .h-dvh { height: 100%; }
-  .app-frame .min-h-dvh { min-height: 100%; }
-}
 
 /* Shimmer skeleton — visible on both bg and surface colours. */
 @keyframes shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
 .skeleton {
   background: linear-gradient(90deg, #e3e6ee 25%, #eef0f5 45%, #e3e6ee 65%) 0 0 / 200% 100%;
   animation: shimmer 1.2s linear infinite;
+}
+
+/*
+ * Desktop/laptop: 1:1 mobile UI looks oversized (esp. with 125% Windows scaling).
+ * Render the app column at phone density. Viewport-height screens are compensated so they still fill the window.
+ */
+:root { --desk-zoom: 0.85; }
+@media (min-width: 640px) and (pointer: fine) {
+  .app-scroll { zoom: var(--desk-zoom); min-height: calc(100dvh / var(--desk-zoom)); }
+  .app-scroll .h-dvh { height: calc(100dvh / var(--desk-zoom)); }
+  .app-scroll .min-h-dvh { min-height: calc(100dvh / var(--desk-zoom)); }
 }

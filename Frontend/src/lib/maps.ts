@@ -2,7 +2,7 @@
 // Google Maps helpers. Script is loaded lazily (only when a map/location feature is opened).
 // In React Native swap this file for react-native-maps + a geocoding call; callers stay the same.
 
-const KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY as string | undefined;
+const KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 export const mapsEnabled = !!KEY;
 
 let loading: Promise<any> | null = null;

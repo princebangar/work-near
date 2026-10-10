@@ -13,14 +13,20 @@ declare global {
   }
 }
 
-export const signToken = (u: AuthUser) =>
-  jwt.sign(u, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'] });
+type Expiry = jwt.SignOptions['expiresIn'];
+
+export const signTokens = (u: AuthUser) => ({
+  accessToken: jwt.sign(u, env.JWT_ACCESS_SECRET, { expiresIn: env.JWT_ACCESS_EXPIRES as Expiry }),
+  refreshToken: jwt.sign({ sub: u.sub }, env.JWT_REFRESH_SECRET, { expiresIn: env.JWT_REFRESH_EXPIRES as Expiry }),
+});
+
+export const verifyRefresh = (token: string) => jwt.verify(token, env.JWT_REFRESH_SECRET) as { sub: string };
 
 export const requireAuth: RequestHandler = (req, _res, next) => {
   const h = req.headers.authorization;
   if (!h?.startsWith('Bearer ')) return next(HttpError.unauthorized());
   try {
-    req.user = jwt.verify(h.slice(7), env.JWT_SECRET) as AuthUser;
+    req.user = jwt.verify(h.slice(7), env.JWT_ACCESS_SECRET) as AuthUser;
     next();
   } catch {
     next(HttpError.unauthorized('Session expired, please login again'));

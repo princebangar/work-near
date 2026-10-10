@@ -2,24 +2,22 @@ import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Navigate, Outlet, useLocation } from 'react-router';
 import { Home, LayoutDashboard, MessageCircle, Search, User, UserRound } from 'lucide-react';
 import { useAuth, usePrefs } from '@/store';
-import { useConversations } from '@/api';
+import { useQueryClient } from '@tanstack/react-query';
+import { qk, useConversations, useEnablePush } from '@/api';
+import { onForegroundPush } from '@/lib/push';
+import { toast } from '@/store';
 import { useT, type TKey } from '@/i18n';
 import { cn } from '@/lib/format';
 import { Spinner } from '@/components/ui';
 
-/**
- * Phone-sized frame. Mobile: full-bleed native feel. Tablet/desktop: a centred phone device, scrolling inside it.
- * translateZ(0) makes fixed children (bottom nav, sheets, CTA bars) position relative to the frame.
- */
+/** Mobile-width app column: full-bleed on phones, centred column on tablet/desktop (no device frame). */
 export function AppFrame() {
   return (
-    <div className="min-h-dvh bg-[#e9ebf3] sm:grid sm:place-items-center sm:p-4">
-      <div className="app-frame relative mx-auto w-full max-w-[var(--app-max-w)] bg-bg sm:h-[min(880px,calc(100dvh-32px))] sm:max-w-[412px] sm:overflow-hidden sm:rounded-[44px] sm:border-[10px] sm:border-[#111827] sm:shadow-2xl sm:shadow-black/25 sm:[transform:translateZ(0)]">
-        <div className="app-scroll no-scrollbar flex min-h-dvh flex-col sm:h-full sm:overflow-y-auto sm:overscroll-contain">
-          <Suspense fallback={<Spinner />}>
-            <Outlet />
-          </Suspense>
-        </div>
+    <div className="min-h-dvh bg-[#e9ebf3]">
+      <div className="app-scroll relative mx-auto flex min-h-dvh w-full max-w-[var(--app-max-w)] flex-col bg-bg sm:shadow-xl sm:shadow-black/5">
+        <Suspense fallback={<Spinner />}>
+          <Outlet />
+        </Suspense>
       </div>
     </div>
   );
@@ -51,7 +49,7 @@ const workerTabs: typeof customerTabs = [
 /** Hide on scroll-down, show on scroll-up (same thresholds as HelloParth). Listens to window + the desktop frame scroller. */
 function useHideOnScroll(pathname: string) {
   const [hidden, setHidden] = useState(false);
-  useEffect(() => setHidden(false), [pathname]);
+  useEffect(() => { setHidden(false); }, [pathname]);
   useEffect(() => {
     let last = 0, acc = 0;
     const onScroll = (e: Event) => {
@@ -72,6 +70,19 @@ function useHideOnScroll(pathname: string) {
   return hidden;
 }
 
+/** Once per session: refresh the FCM token if permission was already granted (no prompt), and toast foreground pushes. */
+function usePushSync() {
+  const qc = useQueryClient();
+  const { mutate } = useEnablePush();
+  useEffect(() => {
+    mutate(false);
+    return onForegroundPush((p) => {
+      toast(p.title, 'info');
+      qc.invalidateQueries({ queryKey: qk.notifications });
+    });
+  }, [mutate, qc]);
+}
+
 export function TabsLayout() {
   const t = useT();
   const { pathname } = useLocation();
@@ -81,6 +92,7 @@ export function TabsLayout() {
   const tabs = role === 'worker' ? workerTabs : customerTabs;
   const active = tabs.findIndex(({ to }) => (to === '/' ? pathname === '/' : pathname.startsWith(to)));
   const hidden = useHideOnScroll(pathname);
+  usePushSync();
   return (
     <>
       <main className="flex-1 pb-[calc(104px+env(safe-area-inset-bottom))]">

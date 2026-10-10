@@ -50,7 +50,7 @@ export const http = {
   get: <T>(p: string, query?: Query, signal?: AbortSignal) => request<T>('GET', p, { query, signal }),
   post: <T>(p: string, body?: unknown) => request<T>('POST', p, { body }),
   patch: <T>(p: string, body?: unknown) => request<T>('PATCH', p, { body }),
-  del: <T>(p: string) => request<T>('DELETE', p),
+  del: <T>(p: string, body?: unknown) => request<T>('DELETE', p, { body }),
 };
 
 // Aggressive caching + no refetch-on-focus = no redundant network calls.

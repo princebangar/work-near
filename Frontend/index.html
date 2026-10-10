@@ -18,7 +18,7 @@
       .bs-k{background:linear-gradient(90deg,#e3e6ee 25%,#eef0f5 45%,#e3e6ee 65%) 0 0/200% 100%;animation:bsh 1.2s linear infinite;border-radius:14px}
       .bs-p{padding:20px 16px;display:grid;gap:16px}.bs-g{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
       @keyframes bsh{from{background-position:150% 0}to{background-position:-50% 0}}
-      @media(min-width:640px){.bs{display:grid;place-items:center;padding:16px}.bs-f{width:412px;height:min(880px,calc(100dvh - 32px));min-height:0;border:10px solid #111827;border-radius:44px;overflow:hidden}}
+      @media(min-width:640px) and (pointer:fine){.bs-f{zoom:.85;min-height:calc(100dvh / .85)}}
     </style>
 
   </head>
