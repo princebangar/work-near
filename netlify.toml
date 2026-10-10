@@ -1,0 +1,23 @@
+# Netlify: build the React app inside Frontend/ (this repo also contains Backend/).
+[build]
+  base = "Frontend"
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "24"
+  # Demo runs on the in-browser mock API until the backend is hosted.
+  VITE_USE_MOCK = "true"
+  # VITE_GOOGLE_MAPS_KEY → set in Netlify UI (Project configuration → Environment variables), not here.
+
+# SPA: let React Router handle every path (/login, /admin, /worker/w1 ...).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Hashed build assets never change → cache for a year. index.html is always revalidated.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
