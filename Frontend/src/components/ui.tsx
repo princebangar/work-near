@@ -154,7 +154,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
       <div className="animate-fade absolute inset-0 bg-black/40" onClick={onClose} />
-      <div role="dialog" className="animate-sheet pb-safe relative max-h-[88dvh] w-full max-w-[var(--app-max-w)] overflow-y-auto rounded-t-3xl bg-surface">
+      <div role="dialog" aria-modal="true" className="animate-sheet pb-safe relative text-ink max-h-[88dvh] w-full max-w-[var(--app-max-w)] overflow-y-auto rounded-t-3xl bg-surface">
         <div className="sticky top-0 z-10 flex items-center bg-surface px-5 pt-3 pb-2">
           <span className="absolute top-2 left-1/2 h-1 w-10 -translate-x-1/2 rounded-full bg-line" />
           <h3 className="mt-2 flex-1 text-lg font-bold">{title}</h3>

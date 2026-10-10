@@ -63,7 +63,8 @@
 }
 
 @utility pt-safe { padding-top: env(safe-area-inset-top); }
-@utility pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+/* Bottom bars: always 16px breathing room + device safe area (gesture bar / home indicator). */
+@utility pb-safe { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
 @utility no-scrollbar {
   scrollbar-width: none;
   &::-webkit-scrollbar { display: none; }

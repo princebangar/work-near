@@ -134,7 +134,7 @@ export function Login() {
         </div>
 
         <div className="min-h-6 flex-1" />
-        <Button type="submit" size="lg" block className="mb-6 h-14 rounded-2xl text-base" disabled={!valid || !agree} loading={m.isPending}>
+        <Button type="submit" size="lg" block className="mb-4 h-14 rounded-2xl text-base" disabled={!valid || !agree} loading={m.isPending}>
           {t('sendOtp')}<ArrowRight size={20} />
         </Button>
       </form>
