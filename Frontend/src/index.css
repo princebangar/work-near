@@ -1,0 +1,81 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens — swap these values to re-theme the whole app.
+ * Keep component code using semantic names (primary, surface, ink...) only.
+ */
+:root {
+  --c-primary: #4f46e5;
+  --c-primary-600: #4338ca;
+  --c-primary-soft: #eef2ff;
+  --c-on-primary: #ffffff;
+  --c-accent: #f59e0b;
+  --c-bg: #f5f6fa;
+  --c-surface: #ffffff;
+  --c-surface-2: #f1f3f8;
+  --c-ink: #0f172a;
+  --c-ink-2: #475569;
+  --c-ink-3: #94a3b8;
+  --c-line: #e5e7ef;
+  --c-success: #16a34a;
+  --c-success-soft: #dcfce7;
+  --c-warning: #d97706;
+  --c-warning-soft: #fef3c7;
+  --c-danger: #dc2626;
+  --c-danger-soft: #fee2e2;
+  --radius-card: 18px;
+  --app-max-w: 480px;
+}
+
+@theme inline {
+  --color-primary: var(--c-primary);
+  --color-primary-600: var(--c-primary-600);
+  --color-primary-soft: var(--c-primary-soft);
+  --color-on-primary: var(--c-on-primary);
+  --color-accent: var(--c-accent);
+  --color-bg: var(--c-bg);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-ink: var(--c-ink);
+  --color-ink-2: var(--c-ink-2);
+  --color-ink-3: var(--c-ink-3);
+  --color-line: var(--c-line);
+  --color-success: var(--c-success);
+  --color-success-soft: var(--c-success-soft);
+  --color-warning: var(--c-warning);
+  --color-warning-soft: var(--c-warning-soft);
+  --color-danger: var(--c-danger);
+  --color-danger-soft: var(--c-danger-soft);
+  --radius-card: var(--radius-card);
+  --font-sans: 'Plus Jakarta Sans', 'Noto Sans Devanagari', system-ui, sans-serif;
+}
+
+@layer base {
+  /* App-like feel: no double-tap zoom, no pull-to-refresh bounce, no text-size inflation. */
+  html { -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; touch-action: manipulation; }
+  body { @apply bg-bg text-ink font-sans antialiased; overscroll-behavior: none; }
+  button, a, nav { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  button { cursor: pointer; }
+  /* iOS zooms into inputs below 16px — keep them at 16px. */
+  input, textarea, select { font-size: 16px !important; }
+  img { -webkit-user-drag: none; }
+  :focus-visible { outline: 2px solid var(--c-primary); outline-offset: 2px; }
+}
+
+@utility pt-safe { padding-top: env(safe-area-inset-top); }
+@utility pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@utility animate-sheet { animation: sheet-up 0.25s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@utility animate-fade { animation: fade-in 0.2s ease-out; }
+
+/* Inside the desktop phone frame, viewport-height screens fill the frame instead of the window. */
+@media (min-width: 640px) {
+  .app-frame .h-dvh { height: 100%; }
+  .app-frame .min-h-dvh { min-height: 100%; }
+}
