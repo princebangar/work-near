@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Ban, Briefcase, Camera, CheckCircle2, Clock, Flag, Languages, MapPin, MessageCircle, MoreVertical, Share2, Upload } from 'lucide-react';
-import { Avatar, Badge, Button, Card, Chip, Input, Rating, Sheet, Skeleton, Spinner, Stars, Textarea, TopBar, VerifiedBadge } from '@/components/ui';
+import { Avatar, Badge, Button, Card, Chip, Input, Rating, Sheet, Skeleton, Stars, Textarea, TopBar, VerifiedBadge } from '@/components/ui';
 import { ReportSheet } from '@/components/shared';
 import { useCategories, useSaveWorkerProfile, useStartConversation, useSubmitReview, useSubmitVerification, useWorker } from '@/api';
 import { useAuth, toast } from '@/store';
@@ -94,7 +94,7 @@ export function WorkerProfile() {
   const start = useStartConversation();
   const [menu, setMenu] = useState(false);
   const [sheet, setSheet] = useState<'report' | 'review' | null>(null);
-  if (isLoading || !w) return <><TopBar /><Spinner /></>;
+  if (isLoading || !w) return <><TopBar /><div className="space-y-3 p-4"><Skeleton className="mx-auto size-24 rounded-full" /><Skeleton className="mx-auto h-6 w-40" /><Skeleton className="h-16" /><Skeleton className="h-28" /><Skeleton className="h-40" /></div></>;
   return (
     <div className="min-h-dvh pb-28">
       <TopBar

@@ -174,7 +174,7 @@ export function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: 
   );
 }
 
-export const Skeleton = ({ className }: { className?: string }) => <div className={cn('animate-pulse rounded-xl bg-surface-2', className)} />;
+export const Skeleton = ({ className }: { className?: string }) => <div className={cn('skeleton rounded-xl', className)} />;
 
 export function EmptyState({ icon, title, sub, action }: { icon: ReactNode; title: string; sub?: string; action?: ReactNode }) {
   return (
@@ -208,12 +208,15 @@ export function Toaster() {
   );
 }
 
-/** Generic screen skeleton — used while a route chunk or page data loads (no spinners). */
+/** Route-loading skeleton — same markup/classes as the boot skeleton in index.html, so refresh shows one continuous skeleton. */
 export const Spinner = () => (
-  <div className="animate-fade space-y-4 p-4 pt-[calc(16px+env(safe-area-inset-top))]">
-    <Skeleton className="h-12 w-2/3" />
-    <Skeleton className="h-32" />
-    <div className="grid grid-cols-4 gap-3">{Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-16" />)}</div>
-    {Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="h-24" />)}
+  <div aria-busy="true">
+    <div className="bs-h" />
+    <div className="bs-p">
+      <div className="bs-k" style={{ height: 128 }} />
+      <div className="bs-g">{[0, 1, 2, 3].map((i) => <div key={i} className="bs-k" style={{ height: 64 }} />)}</div>
+      <div className="bs-k" style={{ height: 100 }} />
+      <div className="bs-k" style={{ height: 100 }} />
+    </div>
   </div>
 );

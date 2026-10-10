@@ -11,9 +11,27 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <title>WorkNear</title>
+    <!-- Skeleton styles live in <head> so the React route fallback can reuse the exact same look. -->
+    <style>
+      .bs{min-height:100dvh;background:#e9ebf3}.bs-f{max-width:480px;margin:0 auto;min-height:100dvh;background:#f5f6fa}
+      .bs-h{height:150px;border-radius:0 0 28px 28px;background:linear-gradient(135deg,#4f46e5,#4338ca)}
+      .bs-k{background:linear-gradient(90deg,#e3e6ee 25%,#eef0f5 45%,#e3e6ee 65%) 0 0/200% 100%;animation:bsh 1.2s linear infinite;border-radius:14px}
+      .bs-p{padding:20px 16px;display:grid;gap:16px}.bs-g{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+      @keyframes bsh{from{background-position:150% 0}to{background-position:-50% 0}}
+      @media(min-width:640px){.bs{display:grid;place-items:center;padding:16px}.bs-f{width:412px;height:min(880px,calc(100dvh - 32px));min-height:0;border:10px solid #111827;border-radius:44px;overflow:hidden}}
+    </style>
+
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Boot skeleton: painted instantly, replaced when React mounts. -->
+    <div id="root">
+      <div class="bs"><div class="bs-f"><div class="bs-h"></div><div class="bs-p">
+        <div class="bs-k" style="height:128px"></div>
+        <div class="bs-g"><div class="bs-k" style="height:64px"></div><div class="bs-k" style="height:64px"></div><div class="bs-k" style="height:64px"></div><div class="bs-k" style="height:64px"></div></div>
+        <div class="bs-k" style="height:100px"></div><div class="bs-k" style="height:100px"></div>
+      </div></div></div>
+    </div>
+    <script>if (location.pathname.startsWith('/admin')) document.querySelector('.bs').style.display = 'none';</script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

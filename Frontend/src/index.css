@@ -79,3 +79,10 @@
   .app-frame .h-dvh { height: 100%; }
   .app-frame .min-h-dvh { min-height: 100%; }
 }
+
+/* Shimmer skeleton — visible on both bg and surface colours. */
+@keyframes shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+.skeleton {
+  background: linear-gradient(90deg, #e3e6ee 25%, #eef0f5 45%, #e3e6ee 65%) 0 0 / 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
