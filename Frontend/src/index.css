@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 
+/* `dark:` utilities follow the app theme (<html data-theme="dark">), not the OS setting. */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
 /*
  * Design tokens — swap these values to re-theme the whole app.
  * Keep component code using semantic names (primary, surface, ink...) only.
@@ -24,8 +27,37 @@
   --c-warning-soft: #fef3c7;
   --c-danger: #dc2626;
   --c-danger-soft: #fee2e2;
+  --c-frame: #e9ebf3;
+  --c-skel-a: #e3e6ee;
+  --c-skel-b: #eef0f5;
   --radius-card: 18px;
   --app-max-w: 480px;
+}
+
+/* Dark theme — same indigo brand, deep neutral surfaces. Toggled via <html data-theme="dark"> (lib/theme.ts). */
+:root[data-theme='dark'] {
+  --c-primary: #6366f1;
+  --c-primary-600: #4f46e5;
+  --c-primary-soft: #1f2147;
+  --c-on-primary: #ffffff;
+  --c-accent: #f59e0b;
+  --c-bg: #0b0d14;
+  --c-surface: #141722;
+  --c-surface-2: #1b1f2d;
+  --c-surface-3: #242a3b;
+  --c-ink: #e9ebf3;
+  --c-ink-2: #a4abc0;
+  --c-ink-3: #6b7290;
+  --c-line: #262b3c;
+  --c-success: #22c55e;
+  --c-success-soft: #10291c;
+  --c-warning: #f59e0b;
+  --c-warning-soft: #2b2211;
+  --c-danger: #f87171;
+  --c-danger-soft: #361719;
+  --c-frame: #05060a;
+  --c-skel-a: #1b1f2d;
+  --c-skel-b: #242a3b;
 }
 
 @theme inline {
@@ -48,6 +80,7 @@
   --color-warning-soft: var(--c-warning-soft);
   --color-danger: var(--c-danger);
   --color-danger-soft: var(--c-danger-soft);
+  --color-frame: var(--c-frame);
   --radius-card: var(--radius-card);
   --font-sans: 'Plus Jakarta Sans', 'Noto Sans Devanagari', system-ui, sans-serif;
 }
@@ -81,7 +114,7 @@
 /* Shimmer skeleton — visible on both bg and surface colours. */
 @keyframes shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
 .skeleton {
-  background: linear-gradient(90deg, #e3e6ee 25%, #eef0f5 45%, #e3e6ee 65%) 0 0 / 200% 100%;
+  background: linear-gradient(90deg, var(--c-skel-a) 25%, var(--c-skel-b) 45%, var(--c-skel-a) 65%) 0 0 / 200% 100%;
   animation: shimmer 1.2s linear infinite;
 }
 
@@ -95,3 +128,25 @@
   .app-scroll .h-dvh { height: calc(100dvh / var(--desk-zoom)); }
   .app-scroll .min-h-dvh { min-height: calc(100dvh / var(--desk-zoom)); }
 }
+
+/*
+ * Theme switch — "paper fold": the new theme is revealed by a diagonal edge that travels from the
+ * bottom-left corner to the top-right, casting a soft shadow like a page being turned over.
+ */
+::view-transition-old(root),
+::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+:root.theme-fold::view-transition-image-pair(root) { filter: drop-shadow(-14px 14px 22px rgb(0 0 0 / 0.35)); }
+:root.theme-fold::view-transition-new(root) { animation: paper-fold 0.9s cubic-bezier(0.65, 0.05, 0.25, 1) both; }
+:root.theme-fold::view-transition-old(root) { animation: paper-under 0.9s cubic-bezier(0.65, 0.05, 0.25, 1) both; }
+@keyframes paper-fold {
+  from { clip-path: polygon(0 100%, 0 100%, 0 100%); }
+  to { clip-path: polygon(0 100%, 0 -100%, 200% 100%); }
+}
+@keyframes paper-under { to { filter: brightness(0.85); } }
+
+/* App theme switch — single smooth cross-fade of the whole screen (no flash). */
+:root.theme-fade::view-transition-new(root) { animation: theme-fade-in 0.32s cubic-bezier(0.4, 0, 0.2, 1) both; }
+@keyframes theme-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+@keyframes wn-float { 0%, 100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-10px) rotate(6deg); } }
+@keyframes wn-wiggle { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-18deg); } 40% { transform: rotate(14deg); } 60% { transform: rotate(-8deg); } 80% { transform: rotate(4deg); } }

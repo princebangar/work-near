@@ -4,6 +4,8 @@ import { createBrowserRouter, RouterProvider } from 'react-router';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/http';
 import { Toaster } from '@/components/ui';
+import { AppBootstrap } from '@/components/system';
+import { initTheme } from '@/lib/theme';
 import { AppFrame, RequireAuth, TabsLayout } from '@/layouts/AppLayout';
 import './index.css';
 
@@ -17,16 +19,21 @@ const search = () => import('@/features/search');
 const worker = () => import('@/features/worker');
 const chat = () => import('@/features/chat');
 const account = () => import('@/features/account');
+const subscription = () => import('@/features/subscription');
+const help = () => import('@/features/help');
+const onboarding = () => import('@/features/onboarding');
 const admin = () => import('@/features/admin');
 
 const Welcome = L(auth, 'Welcome'), Login = L(auth, 'Login'), Otp = L(auth, 'Otp'), RoleSetup = L(auth, 'RoleSetup');
 const Home = L(home, 'Home'), Notifications = L(home, 'Notifications');
 const Search = L(search, 'SearchPage');
-const WorkerProfile = L(worker, 'WorkerProfile'), MyProfile = L(worker, 'MyProfile'), Onboarding = L(worker, 'WorkerOnboarding');
+const WorkerProfile = L(worker, 'WorkerProfile'), MyProfile = L(worker, 'MyProfile');
+const Onboarding = L(onboarding, 'WorkerOnboarding'), Verification = L(onboarding, 'VerificationPage');
 const ChatList = L(chat, 'ChatList'), ChatThread = L(chat, 'ChatThread');
-const Account = L(account, 'Account'), Subscription = L(account, 'SubscriptionPage'), EditProfile = L(account, 'EditProfile'),
-  NotifSettings = L(account, 'NotificationSettings'), Blocked = L(account, 'BlockedUsers'), Help = L(account, 'Help'),
-  Complaint = L(account, 'ComplaintForm'), Legal = L(account, 'Legal');
+const Account = L(account, 'Account'), EditProfile = L(account, 'EditProfile'), NotifSettings = L(account, 'NotificationSettings'),
+  Blocked = L(account, 'BlockedUsers');
+const Subscription = L(subscription, 'SubscriptionPage');
+const Help = L(help, 'Help'), Complaint = L(help, 'ComplaintForm'), Legal = L(help, 'Legal');
 const AdminLogin = L(admin, 'AdminLogin'), AdminRoot = L(admin, 'AdminRoot');
 
 const router = createBrowserRouter([
@@ -58,6 +65,7 @@ const router = createBrowserRouter([
           { path: '/notifications', element: <Notifications /> },
           { path: '/subscription', element: <Subscription /> },
           { path: '/onboarding', element: <Onboarding /> },
+          { path: '/verification', element: <Verification /> },
           { path: '/profile/edit', element: <EditProfile /> },
           { path: '/settings/notifications', element: <NotifSettings /> },
           { path: '/blocked', element: <Blocked /> },
@@ -69,9 +77,12 @@ const router = createBrowserRouter([
   },
 ]);
 
+initTheme();
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
+      <AppBootstrap />
       <RouterProvider router={router} />
       <Toaster />
     </QueryClientProvider>
