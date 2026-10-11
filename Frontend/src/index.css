@@ -109,6 +109,9 @@
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @utility animate-sheet { animation: sheet-up 0.25s cubic-bezier(0.2, 0.8, 0.2, 1); }
 @utility animate-fade { animation: fade-in 0.2s ease-out; }
+/* Centred popups: quick scale-in from the middle of the screen. */
+@keyframes pop-in { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
+@utility animate-pop { animation: pop-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1); }
 
 
 /* Shimmer skeleton — visible on both bg and surface colours. */

@@ -1,12 +1,11 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import {
-  Bell, BellRing, Camera, ChevronRight, CreditCard, Crown, FileText, Globe, HelpCircle, LogOut, Mail, MoonStar, Phone, Repeat, Shield, ShieldCheck, Trash2,
-  UserPen, UserX, type LucideIcon,
+  Bell, BellRing, Camera, Check, Moon, Sun, ChevronRight, CreditCard, Crown, FileText, Globe, HelpCircle, LogOut, Mail, MoonStar, Phone, Repeat, Shield, ShieldCheck, Trash2,
+  UserPen, UserX, X, type LucideIcon,
 } from 'lucide-react';
 import { Avatar, Badge, Button, Card, EmptyState, ErrorState, Input, Sheet, Skeleton, Toggle, TopBar } from '@/components/ui';
 import { FilePicker } from '@/components/shared';
-import { ThemeToggle } from '@/components/system';
 import { toggleTheme } from '@/lib/theme';
 import { cleanName, nameError } from '@/lib/validate';
 import {
@@ -52,6 +51,60 @@ function Row(p: { icon: LucideIcon; label: string; value?: ReactNode; right?: Re
 const subLabel = (s: Subscription | undefined, t: (k: TKey) => string) =>
   !s ? '…' : s.status === 'active' ? t('subActive') : s.status === 'expired' ? t('subExpired') : s.status === 'pending' ? t('subPending') : t('subNone');
 
+/**
+ * Pick-one popup (Language, Appearance). The current choice is listed first and highlighted with a tick;
+ * the other options follow below. Picking one applies it and closes the sheet.
+ */
+function OptionSheet<V extends string>({ open, onClose, title, value, options, onPick }: {
+  open: boolean; onClose: () => void; title: string; value: V; onPick: (v: V) => void;
+  options: { value: V; label: string; sub?: string; icon: LucideIcon }[];
+}) {
+  const ordered = [...options].sort((a, b) => Number(b.value === value) - Number(a.value === value));
+  return (
+    <CenterDialog open={open} onClose={onClose} title={title}>
+      <div role="radiogroup" aria-label={title} className="space-y-2">
+        {ordered.map(({ value: v, label, sub, icon: I }) => {
+          const on = v === value;
+          return (
+            <button key={v} type="button" role="radio" aria-checked={on} onClick={() => onPick(v)}
+              className={cn('flex w-full items-center gap-3 rounded-2xl border-2 px-3.5 py-3 text-left transition active:scale-[.99]', on ? 'border-primary bg-primary-soft' : 'border-line bg-surface hover:bg-surface-2')}>
+              <span className={cn('grid size-10 shrink-0 place-items-center rounded-full', on ? 'bg-primary text-on-primary' : 'bg-surface-2 text-ink-2')}><I size={19} /></span>
+              <span className="min-w-0 flex-1">
+                <b className={cn('block text-[15px]', on && 'text-primary')}>{label}</b>
+                {sub && <span className="block text-xs text-ink-2">{sub}</span>}
+              </span>
+              {on && <span className="grid size-6 place-items-center rounded-full bg-primary text-on-primary"><Check size={14} strokeWidth={3} /></span>}
+            </button>
+          );
+        })}
+      </div>
+    </CenterDialog>
+  );
+}
+
+/** Small centred popup (Zomato-style chooser): dimmed backdrop, card pops in at the middle of the screen. */
+function CenterDialog({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+  useEffect(() => {
+    if (!open) return;
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    addEventListener('keydown', k);
+    return () => removeEventListener('keydown', k);
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center p-6">
+      <div className="animate-fade absolute inset-0 bg-black/50" onClick={onClose} aria-hidden />
+      <div role="dialog" aria-modal="true" aria-label={title} className="animate-pop relative w-full max-w-[340px] rounded-3xl bg-surface p-4 text-ink shadow-2xl">
+        <div className="mb-3 flex items-center px-1">
+          <h3 className="flex-1 text-lg font-bold">{title}</h3>
+          <button type="button" aria-label="Close" onClick={onClose} className="grid size-8 place-items-center rounded-full bg-surface-2 text-ink-2"><X size={16} /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 // ---------- Account ----------
 export function Account() {
   const t = useT();
@@ -87,10 +140,17 @@ export function Account() {
         ? { label: t('becomeWorker'), run: () => nav('/onboarding') }
         : null;
 
-  const changeLang = () => {
-    const next = lang === 'en' ? 'hi' : 'en';
+  const [picker, setPicker] = useState<'lang' | 'theme' | null>(null);
+  const changeLang = (next: 'en' | 'hi') => {
+    setPicker(null);
+    if (next === lang) return;
     setLang(next);
     updateMe.mutate({ language: next }, { onError: () => undefined }); // device choice already applied; server copy is best-effort
+  };
+  const changeTheme = (next: 'light' | 'dark') => {
+    setPicker(null);
+    // Let the sheet close first so the smooth cross-fade runs on the page, not on the closing sheet.
+    if (next !== mode) requestAnimationFrame(() => toggleTheme());
   };
 
   const doLogout = () => {
@@ -156,10 +216,8 @@ export function Account() {
         <Group title={t('accountGroup')}>
           <Row icon={UserPen} label={t('editProfile')} to="/profile/edit" />
           {switchRow && <Row icon={Repeat} label={switchRow.label} onClick={switchRow.run} disabled={updateMe.isPending} />}
-          {hindiOn && <Row icon={Globe} label={t('language')} value={lang === 'en' ? 'English' : 'हिंदी'} onClick={changeLang} />}
-          {/* Whole row toggles the theme (same smooth cross-fade as the icon). */}
-          <Row icon={MoonStar} label={t('appearance')} value={mode === 'dark' ? t('dark') : t('light')} onClick={() => toggleTheme()}
-            right={<ThemeToggle decorative className="bg-surface-2 text-ink" />} />
+          {hindiOn && <Row icon={Globe} label={t('language')} value={lang === 'en' ? 'English' : 'हिंदी'} onClick={() => setPicker('lang')} />}
+          <Row icon={MoonStar} label={t('appearance')} value={mode === 'dark' ? t('dark') : t('light')} onClick={() => setPicker('theme')} />
           <Row icon={Bell} label={t('notificationSettings')} to="/settings/notifications" />
           <Row icon={UserX} label={t('blockedUsers')} to="/blocked" />
         </Group>
@@ -190,6 +248,11 @@ export function Account() {
         </div>
         <p className="pb-2 text-center text-xs text-ink-3">WorkNear v{support.version} · {t('tagline')}</p>
       </div>
+
+      <OptionSheet open={picker === 'lang'} onClose={() => setPicker(null)} title={t('language')} value={lang} onPick={changeLang}
+        options={[{ value: 'en', label: 'English', sub: 'English', icon: Globe }, { value: 'hi', label: 'हिंदी', sub: 'Hindi', icon: Globe }]} />
+      <OptionSheet open={picker === 'theme'} onClose={() => setPicker(null)} title={t('appearance')} value={mode} onPick={changeTheme}
+        options={[{ value: 'light', label: t('light'), sub: t('lightSub'), icon: Sun }, { value: 'dark', label: t('dark'), sub: t('darkSub'), icon: Moon }]} />
 
       <Sheet open={confirm === 'logout'} onClose={closeConfirm} title={t('logout')}>
         <p className="mb-5 text-ink-2">{t('logoutConfirm')}</p>
