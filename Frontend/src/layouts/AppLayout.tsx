@@ -1,34 +1,42 @@
 import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Navigate, Outlet, useLocation } from 'react-router';
 import { Home, LayoutDashboard, MessageCircle, Search, User, UserRound } from 'lucide-react';
-import { useAuth, usePrefs } from '@/store';
+import { useAuth, usePrefs, useFeature } from '@/store';
 import { useQueryClient } from '@tanstack/react-query';
-import { qk, useConversations, useEnablePush } from '@/api';
+import { qk, useConversations, useEnablePush, useMe } from '@/api';
+import { useRealtime } from '@/hooks/useRealtime';
 import { onForegroundPush } from '@/lib/push';
 import { toast } from '@/store';
 import { useT, type TKey } from '@/i18n';
 import { cn } from '@/lib/format';
 import { Spinner } from '@/components/ui';
+import { MaintenanceGate } from '@/components/system';
 
 /** Mobile-width app column: full-bleed on phones, centred column on tablet/desktop (no device frame). */
 export function AppFrame() {
   return (
-    <div className="min-h-dvh bg-[#e9ebf3]">
-      <div className="app-scroll relative mx-auto flex min-h-dvh w-full max-w-[var(--app-max-w)] flex-col bg-bg sm:shadow-xl sm:shadow-black/5">
-        <Suspense fallback={<Spinner />}>
-          <Outlet />
-        </Suspense>
+    <div className="min-h-dvh bg-frame">
+      <div className="app-scroll relative mx-auto flex min-h-dvh w-full max-w-[var(--app-max-w)] flex-col bg-bg text-ink sm:shadow-xl sm:shadow-black/5">
+        <MaintenanceGate>
+          <Suspense fallback={<Spinner />}>
+            <Outlet />
+          </Suspense>
+        </MaintenanceGate>
       </div>
     </div>
   );
 }
 
+/** Signed-in area. Syncs the user once per app start (GET /me) and owns the realtime cache updates. */
 export function RequireAuth() {
   const token = useAuth((s) => s.token);
   const user = useAuth((s) => s.user);
   const onboarded = usePrefs((s) => s.onboarded);
   const loc = useLocation();
-  if (!token) return <Navigate to={onboarded ? '/login' : '/welcome'} replace state={{ from: loc.pathname }} />;
+  const me = useMe(!!token);
+  useEffect(() => { if (me.data) useAuth.getState().updateUser(me.data); }, [me.data]);
+  useRealtime();
+  if (!token) return <Navigate to={onboarded ? '/login' : '/welcome'} replace state={{ from: loc.pathname + loc.search }} />;
   if (!user?.name) return <Navigate to="/role" replace />;
   return <Outlet />;
 }
@@ -73,14 +81,20 @@ function useHideOnScroll(pathname: string) {
 /** Once per session: refresh the FCM token if permission was already granted (no prompt), and toast foreground pushes. */
 function usePushSync() {
   const qc = useQueryClient();
+  const pushOn = useFeature('pushNotifications');
   const { mutate } = useEnablePush();
   useEffect(() => {
-    mutate(false);
-    return onForegroundPush((p) => {
-      toast(p.title, 'info');
-      qc.invalidateQueries({ queryKey: qk.notifications });
-    });
-  }, [mutate, qc]);
+    if (pushOn) mutate(false);
+  }, [mutate, pushOn]);
+  useEffect(
+    () =>
+      onForegroundPush((p) => {
+        toast(p.title, 'info');
+        // Chat pushes are mirrored by the socket already; other types land in the inbox.
+        if (!p.link?.startsWith('/chats')) qc.invalidateQueries({ queryKey: qk.notifications });
+      }),
+    [qc],
+  );
 }
 
 export function TabsLayout() {
@@ -107,12 +121,15 @@ export function TabsLayout() {
           hidden && 'translate-y-[140%]',
         )}
       >
-        <div className="pointer-events-auto relative mx-auto flex h-[70px] max-w-md items-center rounded-[2rem] border border-line/70 bg-surface px-1.5 shadow-[0_15px_40px_-10px_rgba(0,0,0,0.3)]">
+        {/* Dark mode: fade the content out under the bar so cards scrolling behind it don't clash with it. */}
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 mx-auto hidden h-36 max-w-[var(--app-max-w)] bg-gradient-to-t from-bg via-bg/85 to-transparent dark:block" />
+        {/* Dark mode: raised surface + hairline edge so the bar reads as floating above same-coloured cards. */}
+        <div className="pointer-events-auto relative mx-auto flex h-[70px] max-w-md items-center rounded-[2rem] border border-line/70 bg-surface px-1.5 shadow-[0_15px_40px_-10px_rgba(0,0,0,0.3)] dark:border-white/10 dark:bg-surface-3/90 dark:shadow-[0_18px_40px_-8px_rgba(0,0,0,0.9)] dark:backdrop-blur-xl">
           {/* Sliding active pill */}
           {active >= 0 && (
             <span
               aria-hidden
-              className="absolute inset-y-1.5 left-1.5 rounded-[1.5rem] bg-primary-soft transition-transform duration-300 ease-[cubic-bezier(.34,1.3,.64,1)]"
+              className="absolute inset-y-1.5 left-1.5 rounded-[1.5rem] bg-primary-soft transition-transform duration-300 ease-[cubic-bezier(.34,1.3,.64,1)] dark:bg-primary/25"
               style={{ width: `calc((100% - 12px) / ${tabs.length})`, transform: `translateX(${active * 100}%)` }}
             />
           )}
@@ -121,12 +138,12 @@ export function TabsLayout() {
               key={to}
               to={to}
               replace={i === active}
-              className={cn('relative z-10 flex h-14 flex-1 touch-manipulation flex-col items-center justify-center gap-1 transition-colors duration-300', i === active ? 'text-primary' : 'text-ink-2')}
+              className={cn('relative z-10 flex h-14 flex-1 touch-manipulation flex-col items-center justify-center gap-1 transition-colors duration-300', i === active ? 'text-primary dark:text-indigo-300' : 'text-ink-2')}
             >
               <span className="relative">
                 <I size={22} strokeWidth={i === active ? 2.4 : 2} className={cn('transition-transform duration-300', i === active && 'scale-110')} />
                 {to === '/chats' && unread > 0 && (
-                  <span className="absolute -top-1.5 -right-2.5 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[10px] font-bold text-white ring-2 ring-surface">{unread}</span>
+                  <span className="absolute -top-1.5 -right-2.5 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[10px] font-bold text-white ring-2 ring-surface dark:ring-surface-3">{unread > 99 ? '99+' : unread}</span>
                 )}
               </span>
               <span className={cn('text-[10px] leading-none font-black tracking-tight uppercase', i !== active && 'opacity-70')}>{t(label)}</span>
