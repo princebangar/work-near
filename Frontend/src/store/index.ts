@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { AdminRole, Lang, Role, Session, User } from '@/types';
+import type { AdminRole, AppSettings, FeatureKey, Lang, Role, Session, User } from '@/types';
 import { APP } from '@/config/env';
 
 // localStorage on web; swap for AsyncStorage when moving to React Native.
@@ -8,9 +8,11 @@ const storage = createJSONStorage(() => localStorage);
 
 interface AuthState {
   token: string | null;
+  refreshToken: string | null;
   user: User | null;
-  admin: { token: string; name: string; role: AdminRole } | null;
+  admin: { token: string; id?: string; name: string; email?: string; role: AdminRole; mfaEnabled?: boolean } | null;
   setSession: (s: Session) => void;
+  setTokens: (token: string, refreshToken: string) => void;
   updateUser: (u: Partial<User>) => void;
   switchRole: (r: Role) => void;
   setAdmin: (a: AuthState['admin']) => void;
@@ -20,14 +22,16 @@ export const useAuth = create<AuthState>()(
   persist(
     (set) => ({
       token: null,
+      refreshToken: null,
       user: null,
       admin: null,
-      setSession: ({ token, user }) => set({ token, user }),
+      setSession: ({ token, refreshToken, user }) => set({ token, refreshToken: refreshToken ?? null, user }),
+      setTokens: (token, refreshToken) => set({ token, refreshToken }),
       updateUser: (u) => set((s) => (s.user ? { user: { ...s.user, ...u } } : s)),
       switchRole: (r) =>
         set((s) => (s.user ? { user: { ...s.user, activeRole: r, roles: s.user.roles.includes(r) ? s.user.roles : [...s.user.roles, r] } } : s)),
       setAdmin: (admin) => set({ admin }),
-      logout: () => set({ token: null, user: null }),
+      logout: () => set({ token: null, refreshToken: null, user: null }),
     }),
     { name: 'wn-auth', storage },
   ),
@@ -92,3 +96,27 @@ export const useToast = create<ToastState>()((set) => ({
   },
 }));
 export const toast = (text: string, kind?: ToastKind) => useToast.getState().show(text, kind);
+
+// ---------- Live app settings (feature toggles + maintenance) ----------
+// Loaded once at boot (GET /settings) and kept fresh by the socket `settings:update` event — no polling.
+interface SettingsState {
+  settings: AppSettings | null;
+  set: (s: AppSettings) => void;
+  patch: (p: Partial<AppSettings>) => void;
+}
+export const useSettings = create<SettingsState>()((set) => ({
+  settings: null,
+  set: (settings) => set({ settings }),
+  patch: (p) => set((s) => ({ settings: s.settings ? { ...s.settings, ...p } : ({ ...p } as AppSettings) })),
+}));
+/** true unless admin switched the feature off. Unknown (still loading) counts as on. */
+export const useFeature = (k: FeatureKey) => useSettings((s) => s.settings?.features?.[k] !== false);
+export const featureOn = (k: FeatureKey) => useSettings.getState().settings?.features?.[k] !== false;
+
+// ---------- Theme ----------
+export type ThemeMode = 'light' | 'dark';
+interface ThemeState { mode: ThemeMode; setMode: (m: ThemeMode) => void }
+const systemMode = (): ThemeMode => (typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+export const useTheme = create<ThemeState>()(
+  persist((set) => ({ mode: systemMode(), setMode: (mode) => set({ mode }) }), { name: 'wn-theme', storage }),
+);

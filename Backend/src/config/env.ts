@@ -23,9 +23,12 @@ const schema = z.object({
   // Public origin of this API, used to build absolute media URLs (e.g. https://api.worknear.in). Empty = relative /uploads/... paths.
   PUBLIC_URL: str,
 
-  // Seed (npm run seed)
+  // First super admin — created at boot only while no admin account exists (see lib/bootstrap.ts)
   SEED_ADMIN_EMAIL: z.string().default('worknear@admin.com'),
   SEED_ADMIN_PASSWORD: str,
+
+  // Password hashing (admin/staff accounts). 10 = OWASP minimum for bcrypt; each +1 doubles the cost.
+  BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(10, 'BCRYPT_SALT_ROUNDS must be at least 10').max(15).default(10),
 
   // JWT
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 chars'),
@@ -48,6 +51,11 @@ const schema = z.object({
   RATE_LIMIT_DEV_MAX: int(2000),
   AUTH_RATE_LIMIT_WINDOW: int(15),
   AUTH_RATE_LIMIT_MAX: int(30),
+  OTP_IP_RATE_LIMIT: int(20), // OTP requests per IP per hour (stops SMS pumping across many numbers)
+  ADMIN_LOGIN_RATE_LIMIT: int(10), // admin login attempts per email per 15 min (on top of the per-IP limit)
+  SEARCH_RATE_LIMIT: int(60), // worker searches per IP per minute
+  UPLOAD_RATE_LIMIT: int(30), // file uploads per user per hour
+  REPORT_RATE_LIMIT: int(10), // reports + complaints per user per hour
 
   // Google Maps (server-side geocoding)
   GOOGLE_MAPS_API_KEY: str,
@@ -91,8 +99,19 @@ if (!parsed.success) {
 }
 
 const e = parsed.data;
-if (e.NODE_ENV === 'production' && e.USE_DEFAULT_OTP) {
-  console.error('USE_DEFAULT_OTP must be false in production');
+const fatal: string[] = [];
+if (e.REDIS_ENABLED && !e.REDIS_URL) fatal.push('REDIS_URL is required when REDIS_ENABLED=true');
+if (e.NODE_ENV === 'production') {
+  // Production must never boot half-configured or with test shortcuts left on.
+  if (e.USE_DEFAULT_OTP) fatal.push('USE_DEFAULT_OTP must be false in production');
+  if (!e.MONGODB_URI) fatal.push('MONGODB_URI is required in production');
+  if (e.JWT_ACCESS_SECRET === e.JWT_REFRESH_SECRET) fatal.push('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different');
+  if (e.ADMIN_REGISTRATION_CODE && e.ADMIN_REGISTRATION_CODE.length < 16) fatal.push('ADMIN_REGISTRATION_CODE must be at least 16 characters (or empty)');
+  if (!e.RATE_LIMIT_ENABLED) fatal.push('RATE_LIMIT_ENABLED must be true in production');
+  if (/localhost|127\.0\.0\.1/.test(e.FRONTEND_URL)) console.warn('Warning: FRONTEND_URL allows a localhost origin in production');
+}
+if (fatal.length) {
+  console.error(`Invalid environment:\n - ${fatal.join('\n - ')}`);
   process.exit(1);
 }
 

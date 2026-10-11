@@ -6,3 +6,7 @@ dist
 # Firebase service-account keys must never be committed
 *firebase-adminsdk*.json
 serviceAccount*.json
+
+# Local uploads (user files never committed)
+uploads/
+private-uploads/
