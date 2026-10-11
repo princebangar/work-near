@@ -30,13 +30,35 @@ export function distanceKm(aLat: number, aLng: number, bLat: number, bLng: numbe
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-export function getDeviceLocation(): Promise<{ lat: number; lng: number }> {
-  return new Promise((resolve, reject) => {
-    if (!('geolocation' in navigator)) return reject(new Error('unsupported'));
-    navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
-      reject,
-      { enableHighAccuracy: false, timeout: 10000, maximumAge: 5 * 60 * 1000 },
-    );
-  });
+/** Why the device location could not be read — each maps to its own user message (i18n `gps_<reason>`). */
+export type GpsFailure = 'insecure' | 'unsupported' | 'denied' | 'unavailable' | 'timeout';
+export class GpsError extends Error {
+  constructor(public reason: GpsFailure) {
+    super(reason);
+  }
+}
+
+const position = (opts: PositionOptions) =>
+  new Promise<GeolocationPosition>((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, opts));
+
+/**
+ * Current device location. Tries a precise GPS fix first (phones), then falls back to a quick network/cached
+ * fix (laptops, indoors). Browsers only allow this on HTTPS (or localhost) — deploy the site behind TLS.
+ */
+export async function getDeviceLocation(): Promise<{ lat: number; lng: number; accuracy: number }> {
+  if (!window.isSecureContext) throw new GpsError('insecure');
+  if (!('geolocation' in navigator)) throw new GpsError('unsupported');
+  const toFix = (p: GeolocationPosition) => ({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: Math.round(p.coords.accuracy) });
+  try {
+    return toFix(await position({ enableHighAccuracy: true, timeout: 12_000, maximumAge: 60_000 }));
+  } catch (e) {
+    const err = e as GeolocationPositionError;
+    if (err.code === err.PERMISSION_DENIED) throw new GpsError('denied');
+    try {
+      return toFix(await position({ enableHighAccuracy: false, timeout: 10_000, maximumAge: 10 * 60_000 }));
+    } catch (e2) {
+      const err2 = e2 as GeolocationPositionError;
+      throw new GpsError(err2.code === err2.PERMISSION_DENIED ? 'denied' : err2.code === err2.TIMEOUT ? 'timeout' : 'unavailable');
+    }
+  }
 }

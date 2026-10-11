@@ -29,17 +29,21 @@ const shortLabel = (r: any): string => {
 };
 
 // Cache reverse-geocode results (~100 m grid) so the same spot never costs a second API call.
-const revCache = new Map<string, string>();
-export async function reverseGeocode(lat: number, lng: number): Promise<string> {
-  const k = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+const revCache = new Map<string, { label: string; full: string }>();
+/** `label` = short "Area, City" for headers; `full` = complete formatted address (saved addresses). */
+export async function reverseGeocodeDetail(lat: number, lng: number): Promise<{ label: string; full: string }> {
+  const k = `${lat.toFixed(4)},${lng.toFixed(4)}`;
   const hit = revCache.get(k);
   if (hit) return hit;
   const maps = await loadMaps();
   const { results } = await new maps.Geocoder().geocode({ location: { lat, lng } });
-  const label = results?.[0] ? shortLabel(results[0]) : 'Pinned location';
-  revCache.set(k, label);
-  return label;
+  // Skip plus-codes ("7JWV+2C …") — they are useless to people.
+  const r = results?.find((x: any) => !x.types?.includes('plus_code')) ?? results?.[0];
+  const v = r ? { label: shortLabel(r), full: String(r.formatted_address ?? shortLabel(r)).replace(/^[A-Z0-9]{4,8}\+[A-Z0-9]{2,3},?\s*/i, '') } : { label: 'Pinned location', full: 'Pinned location' };
+  revCache.set(k, v);
+  return v;
 }
+export const reverseGeocode = async (lat: number, lng: number) => (await reverseGeocodeDetail(lat, lng)).label;
 
 let session: any = null; // Places session token → autocomplete keystrokes billed as one session
 export interface Suggestion { id: string; main: string; secondary: string }

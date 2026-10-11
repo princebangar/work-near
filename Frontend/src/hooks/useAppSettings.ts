@@ -15,7 +15,7 @@ export function useRadius() {
 
 export const useSupport = () => {
   const s = useSettings((x) => x.settings);
-  return { email: s?.supportEmail || APP.supportEmail, phone: s?.supportPhone || '', version: s?.appVersion || APP.version };
+  return { email: s?.supportEmail || '', phone: s?.supportPhone || '', version: s?.appVersion || APP.version };
 };
 
 /** Debounced copy of a value (search inputs → one API call after typing stops). */

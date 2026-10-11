@@ -14,6 +14,5 @@ export const APP = {
   // Fallbacks only — live values come from GET /settings (admin → Customization Settings).
   radiusOptions: [5, 10, 15] as const,
   defaultRadiusKm: 5,
-  supportEmail: 'support@worknear.in',
   version: '1.0.0',
 } as const;

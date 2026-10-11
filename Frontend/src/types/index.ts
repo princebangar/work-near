@@ -235,3 +235,8 @@ export interface AppSettings {
   supportPhone: string;
   appVersion: string;
 }
+
+// ---------- Saved addresses ----------
+export type AddressLabel = 'home' | 'work' | 'other';
+export interface AddressInput { label: AddressLabel; name: string; line: string; address: string; lat: number; lng: number }
+export interface SavedAddress extends AddressInput { id: string }
