@@ -16,6 +16,17 @@ const schema = z.object({
   // Database
   MONGODB_URI: str,
 
+  // File uploads (local disk for now — swap lib/upload.ts for S3/GCS later)
+  UPLOAD_DIR: z.string().default('uploads'), // public: avatars, portfolio, chat images
+  PRIVATE_UPLOAD_DIR: z.string().default('private-uploads'), // verification documents (admin-only)
+  MAX_UPLOAD_MB: int(5),
+  // Public origin of this API, used to build absolute media URLs (e.g. https://api.worknear.in). Empty = relative /uploads/... paths.
+  PUBLIC_URL: str,
+
+  // Seed (npm run seed)
+  SEED_ADMIN_EMAIL: z.string().default('worknear@admin.com'),
+  SEED_ADMIN_PASSWORD: str,
+
   // JWT
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 chars'),
   JWT_ACCESS_EXPIRES: z.string().default('7d'),
@@ -89,4 +100,6 @@ export const env = {
   ...e,
   isProd: e.NODE_ENV === 'production',
   corsOrigins: e.FRONTEND_URL.split(',').map((s) => s.trim()).filter(Boolean),
+  socketOrigins: (e.SOCKET_CORS_ORIGIN ?? e.FRONTEND_URL).split(',').map((s) => s.trim()).filter(Boolean),
+  razorpayEnabled: !!(e.RAZORPAY_KEY_ID && e.RAZORPAY_KEY_SECRET),
 };

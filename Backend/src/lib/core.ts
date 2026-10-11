@@ -1,3 +1,4 @@
+import { Types } from 'mongoose';
 import { pino } from 'pino';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { z, type ZodType } from 'zod';
@@ -52,6 +53,18 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   res.status(500).json({ error: { code: 'INTERNAL', message: 'Something went wrong' } });
 }
 
+/** Escapes user text before using it inside a RegExp (prevents ReDoS / regex injection). */
+export const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Offset-cursor page envelope used by every list endpoint: { items, nextCursor, total }. */
+export const paged = <T>(items: T[], start: number, limit: number, total: number) => ({
+  items,
+  nextCursor: start + limit < total ? String(start + limit) : null,
+  total,
+});
+
+export const startOfDay = (d = new Date()) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
 /** Haversine straight-line distance in KM (same formula as the client). */
 export function distanceKm(aLat: number, aLng: number, bLat: number, bLng: number) {
   const R = 6371, rad = Math.PI / 180;
@@ -59,3 +72,9 @@ export function distanceKm(aLat: number, aLng: number, bLat: number, bLng: numbe
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * rad) * Math.cos(bLat * rad) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
+
+/** String → ObjectId (Mongoose 9 typings don't auto-cast strings in filters/creates). */
+export const toId = (s: string | Types.ObjectId) => new Types.ObjectId(String(s));
+/** Loose filter type for dynamically-built admin queries (values are validated by zod first). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyFilter = Record<string, any>;

@@ -1,14 +1,20 @@
+import { createServer } from 'node:http';
 import { env } from './config/env.js';
 import { logger } from './lib/core.js';
 import { createApp } from './app.js';
 import { connectDb, disconnectDb } from './lib/db.js';
 import { verifyFcmCredentials } from './lib/fcm.js';
+import { initSocket } from './lib/socket.js';
+import { startSubscriptionJobs } from './modules/subscription/subscription.service.js';
 
 await connectDb();
 // One dry-run call at boot to confirm Firebase credentials (no device is notified).
 verifyFcmCredentials().then((fcm) => logger.info({ fcm }, 'FCM credentials check'));
 
-const server = createApp().listen(env.PORT, () => logger.info(`WorkNear API listening on http://localhost:${env.PORT}`));
+const server = createServer(createApp());
+initSocket(server);
+startSubscriptionJobs();
+server.listen(env.PORT, () => logger.info(`WorkNear API listening on http://localhost:${env.PORT}`));
 server.keepAliveTimeout = 65_000; // longer than typical LB idle timeout
 server.headersTimeout = 66_000;
 

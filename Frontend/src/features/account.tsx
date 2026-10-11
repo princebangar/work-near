@@ -1,332 +1,342 @@
 import { useState, type ReactNode } from 'react';
-import { BellRing } from 'lucide-react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import {
-  Bell, Check, ChevronRight, CreditCard, FileText, Globe, HelpCircle, LogOut, Repeat, Shield, ShieldCheck, Trash2, UserX, Crown, Mail, MessageSquareWarning, ChevronDown,
+  Bell, BellRing, Camera, ChevronRight, CreditCard, Crown, FileText, Globe, HelpCircle, LogOut, Mail, MoonStar, Phone, Repeat, Shield, ShieldCheck, Trash2,
+  UserPen, UserX, type LucideIcon,
 } from 'lucide-react';
-import { Avatar, Badge, Button, Card, Chip, EmptyState, Input, Sheet, Skeleton, Textarea, Toggle, TopBar, type Tone } from '@/components/ui';
-import { useBlocked, useCheckout, useCreateComplaint, useFaqs, useMyComplaints, useMySubscription, usePlans, useUpdateConversation, useConversations, useUpdateMe, useEnablePush, unregisterPush } from '@/api';
+import { Avatar, Badge, Button, Card, EmptyState, ErrorState, Input, Sheet, Skeleton, Toggle, TopBar } from '@/components/ui';
+import { FilePicker } from '@/components/shared';
+import { ThemeToggle } from '@/components/system';
+import { toggleTheme } from '@/lib/theme';
+import {
+  errorMessage, fieldErrors, toastError, unregisterPush, useBlocked, useDeleteRequest, useEnablePush, useMySubscription, useUnblockUser, useUpdateMe, useUploadAvatar,
+} from '@/api';
 import { pushState, type PushState } from '@/lib/push';
-import { useAuth, usePrefs, toast } from '@/store';
-import { useT } from '@/i18n';
-import { APP } from '@/config/env';
-import { cn, date, inr } from '@/lib/format';
+import { useAuth, useFeature, usePrefs, useTheme, toast } from '@/store';
+import { useSupport } from '@/hooks/useAppSettings';
+import { useT, type TKey } from '@/i18n';
+import { cn, date } from '@/lib/format';
 import { queryClient } from '@/lib/http';
-import type { ComplaintStatus, Complaint } from '@/types';
+import type { NotifPrefs, Subscription } from '@/types';
 
-const Row = ({ icon, label, onClick, right, danger }: { icon: ReactNode; label: string; onClick?: () => void; right?: ReactNode; danger?: boolean }) => (
-  <button onClick={onClick} className={cn('flex w-full items-center gap-3 px-4 py-3.5 text-left', danger && 'text-danger')}>
-    <span className={cn('grid size-9 place-items-center rounded-xl', danger ? 'bg-danger-soft' : 'bg-surface-2 text-ink-2')}>{icon}</span>
-    <span className="flex-1 font-medium">{label}</span>
-    {right ?? <ChevronRight size={18} className="text-ink-3" />}
-  </button>
-);
+// ---------- Building blocks ----------
+function Group({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section>
+      <h2 className="mb-2.5 flex items-center gap-2 px-1 text-[13px] font-bold tracking-wide text-ink-2 uppercase">
+        <span className="h-4 w-1 rounded bg-primary" aria-hidden />{title}
+      </h2>
+      <div className="space-y-2">{children}</div>
+    </section>
+  );
+}
 
+const rowCls = 'flex w-full items-center gap-3 rounded-2xl border border-line/70 bg-surface px-3.5 py-3 text-left transition';
+function RowBody({ icon: I, label, value, right }: { icon: LucideIcon; label: string; value?: ReactNode; right?: ReactNode }) {
+  return (
+    <>
+      <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary-soft text-primary"><I size={19} /></span>
+      <span className="min-w-0 flex-1 text-[15px] font-semibold text-ink">{label}</span>
+      {value !== undefined && <span className="max-w-[48%] truncate text-sm text-ink-2">{value}</span>}
+      {right ?? <ChevronRight size={18} className="shrink-0 text-ink-3" />}
+    </>
+  );
+}
+function Row(p: { icon: LucideIcon; label: string; value?: ReactNode; right?: ReactNode; onClick?: () => void; href?: string; to?: string; disabled?: boolean }) {
+  if (p.href) return <a href={p.href} className={cn(rowCls, 'active:scale-[.99]')}><RowBody {...p} /></a>;
+  if (p.to) return <Link to={p.to} className={cn(rowCls, 'active:scale-[.99]')}><RowBody {...p} /></Link>;
+  return <button type="button" onClick={p.onClick} disabled={p.disabled} className={cn(rowCls, 'active:scale-[.99] disabled:opacity-60')}><RowBody {...p} /></button>;
+}
+
+const subLabel = (s: Subscription | undefined, t: (k: TKey) => string) =>
+  !s ? '…' : s.status === 'active' ? t('subActive') : s.status === 'expired' ? t('subExpired') : s.status === 'pending' ? t('subPending') : t('subNone');
+
+// ---------- Account ----------
 export function Account() {
   const t = useT();
   const nav = useNavigate();
-  const { user, switchRole, logout } = useAuth();
+  const user = useAuth((s) => s.user);
+  const logout = useAuth((s) => s.logout);
   const { lang, setLang } = usePrefs();
-  const sub = useMySubscription();
+  const mode = useTheme((s) => s.mode);
+  const subsOn = useFeature('subscriptions');
+  const hindiOn = useFeature('hindi');
+  const dualRole = useFeature('dualRole');
+  const workerReg = useFeature('workerRegistration');
+  const complaintsOn = useFeature('complaints');
+  const support = useSupport();
+  const sub = useMySubscription(subsOn);
+  const avatar = useUploadAvatar();
+  const updateMe = useUpdateMe();
+  const delReq = useDeleteRequest();
   const [confirm, setConfirm] = useState<'logout' | 'delete' | null>(null);
-  const isWorker = user?.activeRole === 'worker';
-  const doLogout = () => { void unregisterPush(); logout(); queryClient.clear(); nav('/login', { replace: true }); };
+  const [typed, setTyped] = useState('');
+  if (!user) return null;
+
+  const isWorker = user.activeRole === 'worker';
+  const other = isWorker ? 'customer' : 'worker';
+  const hasOther = user.roles.includes(other);
+  const switchRow: { label: string; run: () => void } | null =
+    hasOther || (isWorker && dualRole)
+      ? {
+          label: isWorker ? t('switchToCustomer') : t('switchToWorker'),
+          run: () => updateMe.mutate({ activeRole: other }, { onSuccess: () => { toast(isWorker ? t('nowCustomer') : t('nowWorker')); nav('/'); }, onError: (e) => toastError(e) }),
+        }
+      : !isWorker && workerReg && dualRole
+        ? { label: t('becomeWorker'), run: () => nav('/onboarding') }
+        : null;
+
+  const changeLang = () => {
+    const next = lang === 'en' ? 'hi' : 'en';
+    setLang(next);
+    updateMe.mutate({ language: next }, { onError: () => undefined }); // device choice already applied; server copy is best-effort
+  };
+
+  const doLogout = () => {
+    void unregisterPush();
+    logout();
+    queryClient.clear();
+    nav('/login', { replace: true });
+  };
+  const doDelete = () =>
+    delReq.mutate(undefined, {
+      onSuccess: () => { toast(t('deletionRequested'), 'info'); doLogout(); },
+      onError: (e) => toastError(e),
+    });
+  const closeConfirm = () => { setConfirm(null); setTyped(''); };
+
+  const memberSince = new Date(user.createdAt).toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-IN', { month: 'short', year: 'numeric' });
+  const subStatus = sub.data?.status;
+
   return (
     <div>
       <TopBar back={false} title={t('account')} />
-      <div className="space-y-4 p-4">
-        <Card className="flex items-center gap-3 p-4">
-          <Avatar name={user?.name ?? ''} size={60} />
-          <div className="min-w-0 flex-1">
-            <b className="block truncate text-lg">{user?.name}</b>
-            <span className="text-sm text-ink-2">+91 {user?.mobile}</span>
-            <div className="mt-1"><Badge tone="primary">{isWorker ? 'Worker' : 'Customer'}</Badge></div>
+      <div className="space-y-6 p-4">
+        {/* Header card */}
+        <Card className="overflow-hidden">
+          <div className="flex items-center gap-4 p-4">
+            <FilePicker onFiles={([f]) => avatar.mutate(f, { onSuccess: () => toast(t('photoUpdated')), onError: (e) => toastError(e) })}>
+              {(open) => (
+                <button onClick={open} className="relative shrink-0" aria-label={t('changePhoto')} disabled={avatar.isPending}>
+                  <Avatar src={user.avatar} name={user.name} size={64} className={cn(avatar.isPending && 'opacity-50')} />
+                  <span className="absolute -right-0.5 -bottom-0.5 grid size-6 place-items-center rounded-full bg-primary text-on-primary ring-2 ring-surface">
+                    {avatar.isPending ? <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <Camera size={12} />}
+                  </span>
+                </button>
+              )}
+            </FilePicker>
+            <div className="min-w-0 flex-1">
+              <b className="block truncate text-lg leading-tight">{user.name}</b>
+              <span className="block text-sm text-ink-2">+91 {user.mobile}</span>
+              {user.email && <span className="block truncate text-sm text-ink-2">{user.email}</span>}
+              <Link to="/profile/edit" className="mt-1 inline-flex items-center text-sm font-semibold text-primary">{t('editProfile')}<ChevronRight size={16} /></Link>
+            </div>
           </div>
-          <Button size="sm" variant="soft" onClick={() => nav('/profile/edit')}>{t('editProfile')}</Button>
-        </Card>
-
-        <Card onClick={() => nav('/subscription')} className="flex items-center gap-3 overflow-hidden bg-gradient-to-r from-amber-50 to-orange-50 p-4">
-          <span className="grid size-11 place-items-center rounded-xl bg-accent text-white"><Crown /></span>
-          <div className="flex-1">
-            <b>{t('subscription')}</b>
-            <p className="text-sm text-ink-2">{sub.data?.status === 'active' ? `Active · ${t('validTill')} ${date(sub.data.endAt!)}` : '₹30/month · ₹300/year'}</p>
+          <div className={cn('grid divide-x divide-line border-t border-line bg-surface-2/60 py-3 text-center', subsOn ? 'grid-cols-3' : 'grid-cols-2')}>
+            <div className="px-1">
+              <Badge tone="primary">{isWorker ? t('roleWorkerShort') : t('roleCustomerShort')}</Badge>
+              <span className="mt-1 block text-[11px] text-ink-3">{t('mode')}</span>
+            </div>
+            <div className="px-1">
+              <b className="block text-sm">{memberSince}</b>
+              <span className="block text-[11px] text-ink-3">{t('memberSince')}</span>
+            </div>
+            {subsOn && (
+              <button onClick={() => nav('/subscription')} className="px-1">
+                {sub.isLoading ? <Skeleton className="mx-auto h-5 w-14" /> : (
+                  <b className={cn('block text-sm', subStatus === 'active' ? 'text-success' : 'text-ink')}>{subLabel(sub.data, t)}</b>
+                )}
+                <span className="block text-[11px] text-ink-3">{t('subscription')}</span>
+              </button>
+            )}
           </div>
-          <ChevronRight className="text-ink-3" />
         </Card>
 
-        <Card className="divide-y divide-line overflow-hidden">
-          <Row icon={<Repeat size={18} />} label={isWorker ? t('switchToCustomer') : user?.roles.includes('worker') ? t('switchToWorker') : t('becomeWorker')}
-            onClick={() => { if (isWorker) switchRole('customer'); else if (user?.roles.includes('worker')) switchRole('worker'); else return nav('/onboarding'); nav('/'); }} />
-          <Row icon={<Globe size={18} />} label={t('language')} onClick={() => setLang(lang === 'en' ? 'hi' : 'en')} right={<Badge tone="primary">{lang === 'en' ? 'English' : 'हिंदी'}</Badge>} />
-          <Row icon={<Bell size={18} />} label={t('notificationSettings')} onClick={() => nav('/settings/notifications')} />
-          <Row icon={<UserX size={18} />} label={t('blockedUsers')} onClick={() => nav('/blocked')} />
-        </Card>
-        <Card className="divide-y divide-line overflow-hidden">
-          <Row icon={<HelpCircle size={18} />} label={t('helpSupport')} onClick={() => nav('/help')} />
-          <Row icon={<FileText size={18} />} label="Terms of Use" onClick={() => nav('/legal/terms')} />
-          <Row icon={<Shield size={18} />} label="Privacy Policy" onClick={() => nav('/legal/privacy')} />
-          <Row icon={<CreditCard size={18} />} label="Subscription & Refund Policy" onClick={() => nav('/legal/refund')} />
-          <Row icon={<ShieldCheck size={18} />} label="Community & Safety Guidelines" onClick={() => nav('/legal/safety')} />
-        </Card>
-        <Card className="divide-y divide-line overflow-hidden">
-          <Row icon={<LogOut size={18} />} label={t('logout')} onClick={() => setConfirm('logout')} right={<span />} danger />
-          <Row icon={<Trash2 size={18} />} label={t('deleteAccount')} onClick={() => setConfirm('delete')} right={<span />} danger />
-        </Card>
-        <p className="text-center text-xs text-ink-3">WorkNear v0.1.0 · {t('tagline')}</p>
-      </div>
-      <Sheet open={!!confirm} onClose={() => setConfirm(null)} title={confirm === 'delete' ? t('deleteAccount') : t('logout')}>
-        <p className="mb-5 text-ink-2">
-          {confirm === 'delete' ? 'Your deletion request will be processed within 30 days as per our Privacy Policy. Chats and profile will be removed.' : 'Are you sure you want to logout?'}
-        </p>
-        <div className="flex gap-2">
-          <Button variant="outline" block onClick={() => setConfirm(null)}>{t('cancel')}</Button>
-          <Button variant="danger" block onClick={() => { if (confirm === 'delete') toast('Deletion request submitted', 'info'); doLogout(); }}>{confirm === 'delete' ? 'Request deletion' : t('logout')}</Button>
-        </div>
-      </Sheet>
-    </div>
-  );
-}
+        <Group title={t('accountGroup')}>
+          <Row icon={UserPen} label={t('editProfile')} to="/profile/edit" />
+          {switchRow && <Row icon={Repeat} label={switchRow.label} onClick={switchRow.run} disabled={updateMe.isPending} />}
+          {hindiOn && <Row icon={Globe} label={t('language')} value={lang === 'en' ? 'English' : 'हिंदी'} onClick={changeLang} />}
+          {/* Whole row toggles the theme (same smooth cross-fade as the icon). */}
+          <Row icon={MoonStar} label={t('appearance')} value={mode === 'dark' ? t('dark') : t('light')} onClick={() => toggleTheme()}
+            right={<ThemeToggle decorative className="bg-surface-2 text-ink" />} />
+          <Row icon={Bell} label={t('notificationSettings')} to="/settings/notifications" />
+          <Row icon={UserX} label={t('blockedUsers')} to="/blocked" />
+        </Group>
 
-export function SubscriptionPage() {
-  const t = useT();
-  const plans = usePlans();
-  const sub = useMySubscription();
-  const checkout = useCheckout();
-  const [sel, setSel] = useState('yearly');
-  const [done, setDone] = useState(false);
-  const plan = plans.data?.find((p) => p.id === sel);
-  const active = sub.data?.status === 'active';
-  return (
-    <div className="flex min-h-dvh flex-col bg-surface">
-      <TopBar title={t('subscription')} />
-      <div className="flex-1 space-y-4 p-4">
-        {active && (
-          <Card className="border-success/30 bg-success-soft p-4">
-            <Badge tone="success">Active</Badge>
-            <b className="mt-2 block text-lg capitalize">{t('currentPlan')}: {sub.data!.planId}</b>
-            <p className="text-sm text-ink-2">{date(sub.data!.startAt!)} → {date(sub.data!.endAt!)} · Manual renewal</p>
-          </Card>
+        {subsOn && (
+          <Group title={t('subscription')}>
+            <Row icon={Crown} label={t('mySubscription')} to="/subscription"
+              value={sub.data?.status === 'active' && sub.data.endAt ? `${t('validTill')} ${date(sub.data.endAt)}` : subLabel(sub.data, t)} />
+          </Group>
         )}
-        <div className="text-center">
-          <Crown className="mx-auto mb-2 text-accent" size={36} />
-          <h2 className="text-xl font-extrabold">{t('choosePlan')}</h2>
-          <p className="text-sm text-ink-2">Subscription is separate from job payments. Zero commission on work.</p>
+
+        <Group title={t('support')}>
+          <Row icon={HelpCircle} label={complaintsOn ? t('helpComplaints') : t('helpFaqs')} to="/help" />
+          <Row icon={Mail} label={t('emailSupport')} value={support.email} href={`mailto:${support.email}`} />
+          {support.phone && <Row icon={Phone} label={t('callSupport')} value={support.phone} href={`tel:${support.phone.replace(/\s/g, '')}`} />}
+        </Group>
+
+        <Group title={t('legal')}>
+          <Row icon={FileText} label={t('termsOfUse')} to="/legal/terms" />
+          <Row icon={Shield} label={t('privacyPolicy')} to="/legal/privacy" />
+          <Row icon={CreditCard} label={t('refundPolicy')} to="/legal/refund" />
+          <Row icon={ShieldCheck} label={t('safetyGuidelines')} to="/legal/safety" />
+        </Group>
+
+        <div className="space-y-2">
+          <Row icon={LogOut} label={t('logout')} onClick={() => setConfirm('logout')} right={<span />} />
+          <Row icon={Trash2} label={t('deleteAccount')} onClick={() => setConfirm('delete')} right={<span />} />
         </div>
-        {plans.isLoading && <Skeleton className="h-40" />}
-        {plans.data?.map((p) => (
-          <button key={p.id} onClick={() => setSel(p.id)} className={cn('relative w-full rounded-card border-2 p-4 text-left transition', sel === p.id ? 'border-primary bg-primary-soft' : 'border-line')}>
-            {p.badge && <Badge tone="success" className="absolute top-4 right-4">{p.badge}</Badge>}
-            <span className="text-sm font-semibold text-ink-2">{p.name}</span>
-            <div className="text-3xl font-extrabold">{inr(p.price)}<span className="text-base font-medium text-ink-2">{p.period === 'month' ? t('perMonth') : t('perYear')}</span></div>
-            <ul className="mt-3 space-y-1.5">
-              {p.features.map((f) => <li key={f} className="flex items-center gap-2 text-sm"><Check size={16} className="text-success" />{f}</li>)}
-            </ul>
-          </button>
-        ))}
-        <p className="text-center text-xs text-ink-3">{t('inclTax')} See <Link to="/legal/refund" className="text-primary underline">refund policy</Link>.</p>
+        <p className="pb-2 text-center text-xs text-ink-3">WorkNear v{support.version} · {t('tagline')}</p>
       </div>
-      <div className="pb-safe border-t border-line p-3">
-        <Button size="lg" block disabled={!plan} loading={checkout.isPending} onClick={() => plan && checkout.mutate(plan.id, { onSuccess: () => setDone(true) })}>
-          {t('payNow')} {plan && inr(plan.price)}
-        </Button>
-      </div>
-      <Sheet open={done} onClose={() => setDone(false)} title="Payment successful">
-        <div className="py-4 text-center">
-          <span className="mx-auto mb-3 grid size-16 place-items-center rounded-full bg-success-soft text-success"><Check size={32} /></span>
-          <b className="text-lg">Your {plan?.name} plan is active</b>
-          <p className="mt-1 text-sm text-ink-2">Receipt sent to your registered number. Valid till {sub.data?.endAt && date(sub.data.endAt)}.</p>
+
+      <Sheet open={confirm === 'logout'} onClose={closeConfirm} title={t('logout')}>
+        <p className="mb-5 text-ink-2">{t('logoutConfirm')}</p>
+        <div className="flex gap-2">
+          <Button variant="outline" block onClick={closeConfirm}>{t('cancel')}</Button>
+          <Button block onClick={doLogout}>{t('logout')}</Button>
         </div>
-        <Button block onClick={() => setDone(false)}>Done</Button>
+      </Sheet>
+      <Sheet open={confirm === 'delete'} onClose={closeConfirm} title={t('deleteAccount')}>
+        <p className="mb-4 text-sm text-ink-2">{t('deleteExplain')}</p>
+        <Input label={t('typeDelete')} value={typed} autoCapitalize="characters" autoComplete="off" onChange={(e) => setTyped(e.target.value)} placeholder="DELETE" />
+        <div className="mt-5 flex gap-2">
+          <Button variant="outline" block onClick={closeConfirm}>{t('cancel')}</Button>
+          <Button block disabled={typed.trim() !== 'DELETE'} loading={delReq.isPending} onClick={doDelete}>{t('requestDeletion')}</Button>
+        </div>
       </Sheet>
     </div>
   );
 }
 
+// ---------- Edit profile ----------
 export function EditProfile() {
   const t = useT();
   const nav = useNavigate();
-  const { user, updateUser } = useAuth();
+  const user = useAuth((s) => s.user);
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
   const m = useUpdateMe();
+  const avatar = useUploadAvatar();
+  const errs = fieldErrors(m.error);
+  const emailOk = !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const dirty = name.trim() !== (user?.name ?? '') || email.trim() !== (user?.email ?? '');
+  const save = () =>
+    m.mutate({ name: name.trim(), email: email.trim() }, {
+      onSuccess: () => { toast(t('profileUpdated')); if (history.length > 1) nav(-1); else nav('/account'); },
+      onError: (e) => { if (!Object.keys(fieldErrors(e)).length) toastError(e); },
+    });
   return (
     <div className="min-h-dvh bg-surface">
       <TopBar title={t('editProfile')} />
-      <div className="space-y-4 p-4">
-        <div className="flex justify-center py-2"><Avatar name={name || 'U'} size={88} /></div>
-        <Input label={t('yourName')} value={name} onChange={(e) => setName(e.target.value)} />
-        <Input label="Mobile" value={`+91 ${user?.mobile}`} disabled />
-        <Input label="Email (optional)" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <Button block size="lg" loading={m.isPending} onClick={() => m.mutate({ name, email }, { onSuccess: () => { updateUser({ name, email }); toast('Profile updated'); nav(-1); } })}>{t('save')}</Button>
-      </div>
+      <form onSubmit={(e) => { e.preventDefault(); if (dirty && emailOk && name.trim().length >= 2) save(); }} className="space-y-4 p-4">
+        <div className="flex flex-col items-center gap-1 py-2">
+          <FilePicker onFiles={([f]) => avatar.mutate(f, { onSuccess: () => toast(t('photoUpdated')), onError: (e) => toastError(e) })}>
+            {(open) => (
+              <button type="button" onClick={open} className="relative" aria-label={t('changePhoto')}>
+                <Avatar src={user?.avatar} name={name || 'U'} size={88} className={cn(avatar.isPending && 'opacity-50')} />
+                <span className="absolute right-0 bottom-0 grid size-8 place-items-center rounded-full bg-primary text-on-primary ring-2 ring-surface"><Camera size={15} /></span>
+              </button>
+            )}
+          </FilePicker>
+          <span className="text-xs text-ink-3">{t('photoHint')}</span>
+        </div>
+        <Input label={t('yourName')} value={name} maxLength={80} autoComplete="name" onChange={(e) => setName(e.target.value)} error={errs.name ?? (name.trim().length < 2 ? t('nameMin') : undefined)} />
+        <Input label={t('mobile')} value={`+91 ${user?.mobile ?? ''}`} disabled hint={t('mobileFixed')} />
+        <Input label={`${t('email')} (${t('optional')})`} type="email" inputMode="email" autoComplete="email" maxLength={120} value={email}
+          onChange={(e) => setEmail(e.target.value)} error={errs.email ?? (!emailOk ? t('invalidEmail') : undefined)} />
+        {user?.roles.includes('worker') && (
+          <p className="rounded-xl bg-surface-2 p-3 text-xs text-ink-2">
+            {t('workerNameNote')} <Link to="/onboarding" className="font-semibold text-primary">{t('editWorkerProfile')}</Link>
+          </p>
+        )}
+        <Button type="submit" block size="lg" disabled={!dirty || !emailOk || name.trim().length < 2} loading={m.isPending}>{t('save')}</Button>
+      </form>
     </div>
   );
 }
 
+// ---------- Notification settings ----------
 /** Device-level push permission. Browser permission can only be requested from a user tap. */
 function PushRow() {
+  const t = useT();
   const [state, setState] = useState<PushState>(pushState);
   const enable = useEnablePush();
   const turnOn = () =>
     enable.mutate(true, {
       onSuccess: (token) => {
         setState(pushState());
-        toast(token ? 'Push notifications enabled' : 'Permission not granted', token ? 'success' : 'error');
+        toast(token ? t('pushEnabled') : t('pushNotGranted'), token ? 'success' : 'error');
       },
-      onError: () => toast('Could not enable push notifications', 'error'),
+      onError: () => toast(t('pushFailed'), 'error'),
     });
-  const sub = {
-    granted: 'On for this device',
-    default: 'Get chat & account alerts even when the app is closed',
-    denied: 'Blocked — allow notifications for this site in browser settings',
-    unsupported: 'Not supported in this browser (needs HTTPS or localhost)',
-  }[state];
+  const sub: Record<PushState, TKey> = { granted: 'pushOnDevice', default: 'pushDefault', denied: 'pushDenied', unsupported: 'pushUnsupported' };
   return (
     <div className="flex items-center gap-3 border-b border-line bg-primary-soft/40 px-4 py-4">
       <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary-soft text-primary"><BellRing size={20} /></span>
-      <div className="min-w-0 flex-1"><b className="block">Push notifications</b><span className="text-sm text-ink-2">{sub}</span></div>
-      {state === 'granted' ? <Badge tone="success">On</Badge> : state === 'default' ? <Button size="sm" loading={enable.isPending} onClick={turnOn}>Enable</Button> : null}
+      <div className="min-w-0 flex-1"><b className="block">{t('pushNotifications')}</b><span className="text-sm text-ink-2">{t(sub[state])}</span></div>
+      {state === 'granted' ? <Badge tone="success">{t('on')}</Badge> : state === 'default' ? <Button size="sm" loading={enable.isPending} onClick={turnOn}>{t('enable')}</Button> : null}
     </div>
   );
 }
 
 export function NotificationSettings() {
   const t = useT();
-  const { notif, setNotif } = usePrefs();
-  const rows: [keyof typeof notif, string, string][] = [
-    ['chat', 'Chat messages', 'New messages from customers / workers'],
-    ['subscription', 'Subscription', 'Expiry and renewal reminders'],
-    ['offers', 'Offers & updates', 'News and promotions'],
+  const user = useAuth((s) => s.user);
+  const updateUser = useAuth((s) => s.updateUser);
+  const pushOn = useFeature('pushNotifications');
+  const subsOn = useFeature('subscriptions');
+  const m = useUpdateMe();
+  const notif: NotifPrefs = user?.notif ?? { chat: true, subscription: true, offers: false };
+  const rows: [keyof NotifPrefs, TKey, TKey][] = [
+    ['chat', 'nChat', 'nChatSub'],
+    ...(subsOn ? ([['subscription', 'subscription', 'nSubSub']] as [keyof NotifPrefs, TKey, TKey][]) : []),
+    ['offers', 'nOffers', 'nOffersSub'],
   ];
+  const change = (k: keyof NotifPrefs, v: boolean) => {
+    const prev = notif;
+    updateUser({ notif: { ...notif, [k]: v } }); // optimistic; server response replaces it
+    m.mutate({ notif: { [k]: v } }, { onError: (e) => { updateUser({ notif: prev }); toastError(e); } });
+  };
   return (
     <div className="min-h-dvh bg-surface">
       <TopBar title={t('notificationSettings')} />
-      <PushRow />
+      {pushOn && <PushRow />}
       <div className="divide-y divide-line">
         {rows.map(([k, a, b]) => (
           <div key={k} className="flex items-center gap-3 px-4 py-4">
-            <div className="flex-1"><b className="block">{a}</b><span className="text-sm text-ink-2">{b}</span></div>
-            <Toggle checked={notif[k]} onChange={(v) => setNotif(k, v)} />
+            <div className="flex-1"><b className="block">{t(a)}</b><span className="text-sm text-ink-2">{t(b)}</span></div>
+            <Toggle label={t(a)} checked={notif[k]} onChange={(v) => change(k, v)} />
           </div>
         ))}
-        <div className="flex items-center gap-3 px-4 py-4 opacity-60">
-          <div className="flex-1"><b className="block">Security alerts</b><span className="text-sm text-ink-2">Login & account security (mandatory)</span></div>
-          <Toggle checked onChange={() => {}} />
+        <div className="flex items-center gap-3 px-4 py-4">
+          <div className="flex-1"><b className="block">{t('nSecurity')}</b><span className="text-sm text-ink-2">{t('nSecuritySub')}</span></div>
+          <Toggle label={t('nSecurity')} checked disabled onChange={() => undefined} />
         </div>
       </div>
     </div>
   );
 }
 
+// ---------- Blocked users ----------
 export function BlockedUsers() {
   const t = useT();
-  const { data, isLoading } = useBlocked();
-  const convs = useConversations();
-  const upd = useUpdateConversation();
+  const { data, isLoading, isError, error, refetch } = useBlocked();
+  const unblock = useUnblockUser();
   return (
     <div className="min-h-dvh bg-surface">
       <TopBar title={t('blockedUsers')} />
-      {isLoading && <Skeleton className="m-4 h-16" />}
-      {data?.length === 0 && <EmptyState icon={<UserX size={32} />} title="No blocked users" sub="People you block will appear here." />}
+      {isLoading && <div className="space-y-2 p-4"><Skeleton className="h-16" /><Skeleton className="h-16" /></div>}
+      {isError && <ErrorState message={errorMessage(error)} onRetry={() => refetch()} />}
+      {data?.length === 0 && <EmptyState icon={<UserX size={32} />} title={t('noBlocked')} sub={t('noBlockedSub')} />}
       {data?.map((p) => (
         <div key={p.id} className="flex items-center gap-3 border-b border-line px-4 py-3">
           <Avatar src={p.photo} name={p.name} />
-          <div className="flex-1"><b className="block">{p.name}</b><span className="text-sm text-ink-2">{p.subtitle}</span></div>
-          <Button size="sm" variant="outline" onClick={() => { const c = convs.data?.find((x) => x.peer.id === p.id); if (c) upd.mutate({ id: c.id, blocked: false }); }}>{t('unblock')}</Button>
+          <div className="min-w-0 flex-1"><b className="block truncate">{p.name}</b><span className="text-sm text-ink-2">{p.subtitle}</span></div>
+          <Button size="sm" variant="outline" loading={unblock.isPending && unblock.variables === p.id}
+            onClick={() => unblock.mutate(p.id, { onSuccess: () => toast(`${p.name} ${t('unblockedToast')}`) })}>{t('unblock')}</Button>
         </div>
       ))}
     </div>
   );
 }
-
-const statusTone: Record<ComplaintStatus, Tone> = { open: 'warning', in_progress: 'primary', resolved: 'success', escalated: 'danger' };
-export const ComplaintStatusBadge = ({ s }: { s: ComplaintStatus }) => <Badge tone={statusTone[s]}>{s.replace('_', ' ')}</Badge>;
-
-export function Help() {
-  const t = useT();
-  const nav = useNavigate();
-  const faqs = useFaqs();
-  const complaints = useMyComplaints();
-  const [open, setOpen] = useState<string | null>(null);
-  return (
-    <div className="min-h-dvh">
-      <TopBar title={t('helpSupport')} />
-      <div className="space-y-5 p-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Card onClick={() => nav('/help/complaint')} className="p-4"><MessageSquareWarning className="mb-2 text-danger" /><b className="text-sm">{t('raiseComplaint')}</b></Card>
-          <Card onClick={() => (location.href = `mailto:${APP.supportEmail}`)} className="p-4"><Mail className="mb-2 text-primary" /><b className="text-sm">{t('contactUs')}</b></Card>
-        </div>
-        <section>
-          <h2 className="mb-2 font-bold">{t('myComplaints')}</h2>
-          <Card className="divide-y divide-line">
-            {complaints.data?.map((c: Complaint) => (
-              <div key={c.id} className="p-3.5">
-                <div className="flex items-center justify-between"><b className="text-sm">#{c.id} · {c.category}</b><ComplaintStatusBadge s={c.status} /></div>
-                <p className="mt-1 text-sm text-ink-2">{c.description}</p>
-                {c.resolution && <p className="mt-1 text-xs text-success">Resolution: {c.resolution}</p>}
-                <span className="text-xs text-ink-3">{date(c.createdAt)}</span>
-              </div>
-            ))}
-          </Card>
-        </section>
-        <section>
-          <h2 className="mb-2 font-bold">{t('faqs')}</h2>
-          <Card className="divide-y divide-line">
-            {faqs.data?.map((f) => (
-              <button key={f.id} onClick={() => setOpen(open === f.id ? null : f.id)} className="block w-full p-3.5 text-left">
-                <span className="flex items-center gap-2"><b className="flex-1 text-sm">{f.q}</b><ChevronDown size={18} className={cn('text-ink-3 transition', open === f.id && 'rotate-180')} /></span>
-                {open === f.id && <p className="mt-2 text-sm text-ink-2">{f.a}</p>}
-              </button>
-            ))}
-          </Card>
-        </section>
-        <p className="text-center text-xs text-ink-3">Urgent safety issue? Email {APP.supportEmail} with subject "URGENT".</p>
-      </div>
-    </div>
-  );
-}
-
-const CATS = ['Fake profile', 'Fraud', 'Abusive behaviour', 'Payment / subscription', 'App issue', 'Other'];
-export function ComplaintForm() {
-  const t = useT();
-  const nav = useNavigate();
-  const [category, setCat] = useState('');
-  const [description, setDesc] = useState('');
-  const m = useCreateComplaint();
-  return (
-    <div className="flex min-h-dvh flex-col bg-surface">
-      <TopBar title={t('raiseComplaint')} />
-      <div className="flex-1 space-y-4 p-4">
-        <p className="text-sm font-medium text-ink-2">Category</p>
-        <div className="flex flex-wrap gap-2">{CATS.map((c) => <Chip key={c} active={category === c} onClick={() => setCat(c)}>{c}</Chip>)}</div>
-        <Textarea label="Describe the issue" value={description} onChange={(e) => setDesc(e.target.value)} />
-        <button className="w-full rounded-2xl border-2 border-dashed border-line py-4 text-sm text-ink-2">+ Attach evidence (optional)</button>
-      </div>
-      <div className="pb-safe border-t border-line p-3">
-        <Button size="lg" block disabled={!category || description.length < 10} loading={m.isPending}
-          onClick={() => m.mutate({ category, description, targetType: 'other' }, { onSuccess: (c) => { toast(`Complaint #${c.id} submitted`); nav(-1); } })}>{t('submit')}</Button>
-      </div>
-    </div>
-  );
-}
-
-const LEGAL: Record<string, { title: string; body: string[] }> = {
-  terms: { title: 'Terms of Use', body: ['WorkNear is a discovery and communication platform connecting customers with local service providers.', 'WorkNear does not guarantee work quality, worker availability, payment or outcomes.', 'Users must provide accurate information and must not misuse the platform for fraud, spam or abuse.', 'Zero Commission: WorkNear does not charge commission on the value of work. Payment for work is made directly between customer and worker.'] },
-  privacy: { title: 'Privacy Policy', body: ['We collect only data necessary to provide the service: mobile number, profile details and approximate location.', 'Location is used only to show nearby workers and is not continuously tracked.', 'Identity documents are stored in private encrypted storage and accessed only by authorised verification staff. Every access is logged.', 'You can request data export or account deletion from Account → Delete account.'] },
-  refund: { title: 'Subscription & Refund Policy', body: ['Plans: ₹30/month and ₹300/year, inclusive of applicable taxes.', 'Renewal is manual. No automatic debit without explicit consent.', 'A plan is activated only after server-verified payment success.', 'Refund eligibility and timelines will be published here before payment launch.'] },
-  safety: { title: 'Community & Safety Guidelines', body: ['Be respectful in chats. Abuse, harassment and spam lead to suspension.', 'Never share OTPs or pay large advances before work starts.', 'Phone number sharing is optional and controlled by you.', 'Report suspicious profiles or messages using the Report option.'] },
-};
-export function Legal() {
-  const { slug = 'terms' } = useParams();
-  const doc = LEGAL[slug] ?? LEGAL.terms;
-  return (
-    <div className="min-h-dvh bg-surface">
-      <TopBar title={doc.title} />
-      <article className="space-y-3 p-5 text-[15px] leading-relaxed text-ink-2">
-        <p className="text-xs text-ink-3">Last updated: 01 Oct 2026 · Draft — subject to legal review</p>
-        {doc.body.map((p, i) => <p key={i}><b className="text-ink">{i + 1}.</b> {p}</p>)}
-      </article>
-    </div>
-  );
-}
-

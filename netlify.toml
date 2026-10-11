@@ -6,8 +6,7 @@
 
 [build.environment]
   NODE_VERSION = "24"
-  # Demo runs on the in-browser mock API until the backend is hosted.
-  VITE_USE_MOCK = "true"
+  # Point these at the hosted backend (set in Netlify UI): VITE_API_BASE_URL=https://api.../api/v1, VITE_BACKEND_ORIGIN=https://api...
   # VITE_GOOGLE_MAPS_API_KEY → set in Netlify UI (Project configuration → Environment variables), not here.
 
 # SPA: let React Router handle every path (/login, /admin, /worker/w1 ...).
