@@ -5,20 +5,15 @@ import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { HttpError, logger, ok, validate } from '../../lib/core.js';
 import { sendOtpSms } from '../../lib/sms.js';
-import { signTokens, verifyRefresh } from '../../middlewares/auth.js';
+import { signTokens, verifyRefresh, type Role } from '../../middlewares/auth.js';
+import { Otp, User } from '../../models/user.js';
+import { notify } from '../../lib/notify.js';
+import { userDto } from '../me/me.service.js';
 
-/**
- * OTP store. In-memory for now — move to Redis (SET key val EX ttl) when REDIS_ENABLED / scaling horizontally.
- * Only a hash of the OTP is kept, never the plain value.
- */
-interface OtpEntry { hash: string; expiresAt: number; attempts: number; resendAt: number; sent: number[] }
-const otps = new Map<string, OtpEntry>();
-const hash = (s: string) => createHash('sha256').update(s).digest();
+/** Current Terms/Privacy version the user accepts at sign-up (SRS 5.1). Bump when policies change. */
+export const CONSENT_VERSION = '2026-10-01';
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of otps) if (v.expiresAt < now && v.sent.every((t) => t < now - env.OTP_RATE_WINDOW * 1000)) otps.delete(k);
-}, 60_000).unref();
+const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 
 /** Default OTP for local testing (USE_DEFAULT_OTP) or a single QA number (USE_DEFAULT_TEST_PHONE). Never in production. */
 const usesDefaultOtp = (mobile: string) =>
@@ -40,10 +35,13 @@ authRouter.use(authLimiter);
 authRouter.post('/request-otp', validate({ body: z.object({ mobile }) }), async (_req, res) => {
   const { mobile: m } = res.locals.body as { mobile: string };
   const now = Date.now();
-  const prev = otps.get(m);
-  if (prev && prev.resendAt > now) throw HttpError.tooMany(`Please wait ${Math.ceil((prev.resendAt - now) / 1000)}s before requesting another OTP`);
-  const sent = (prev?.sent ?? []).filter((t) => t > now - env.OTP_RATE_WINDOW * 1000);
+  const prev = await Otp.findOne({ mobile: m }).lean();
+  if (prev && prev.resendAt.getTime() > now) throw HttpError.tooMany(`Please wait ${Math.ceil((prev.resendAt.getTime() - now) / 1000)}s before requesting another OTP`);
+  const sent = (prev?.sent ?? []).filter((t) => t.getTime() > now - env.OTP_RATE_WINDOW * 1000);
   if (sent.length >= env.OTP_RATE_LIMIT) throw HttpError.tooMany('Too many OTP requests. Please try again later.');
+
+  const existing = await User.findOne({ mobile: m }, { status: 1 }).lean();
+  if (existing?.status === 'suspended') throw new HttpError(403, 'SUSPENDED', 'This account is suspended. Contact support.');
 
   const useDefault = usesDefaultOtp(m);
   const code = useDefault ? env.DEFAULT_OTP : String(randomInt(100000, 1000000));
@@ -54,34 +52,64 @@ authRouter.post('/request-otp', validate({ body: z.object({ mobile }) }), async 
     logger.debug({ mobile: `******${m.slice(-4)}` }, 'Default OTP issued (no SMS sent)');
   }
 
-  otps.set(m, {
-    hash: hash(code).toString('hex'),
-    expiresAt: now + env.OTP_EXPIRY_SECONDS * 1000,
-    attempts: 0,
-    resendAt: now + env.OTP_RESEND_SECONDS * 1000,
-    sent: [...sent, now],
-  });
-  ok(res, { expiresIn: env.OTP_EXPIRY_SECONDS, resendAfter: env.OTP_RESEND_SECONDS });
+  await Otp.updateOne(
+    { mobile: m },
+    {
+      $set: {
+        hash: hash(code), attempts: 0,
+        expiresAt: new Date(now + env.OTP_EXPIRY_SECONDS * 1000),
+        resendAt: new Date(now + env.OTP_RESEND_SECONDS * 1000),
+        sent: [...sent, new Date(now)],
+        purgeAt: new Date(now + Math.max(env.OTP_RATE_WINDOW, env.OTP_EXPIRY_SECONDS) * 1000),
+      },
+    },
+    { upsert: true },
+  );
+  ok(res, { expiresIn: env.OTP_EXPIRY_SECONDS, resendAfter: env.OTP_RESEND_SECONDS, isRegistered: !!existing });
 });
 
-authRouter.post('/verify-otp', validate({ body: z.object({ mobile, otp: z.string().regex(/^\d{6}$/) }) }), (_req, res) => {
-  const { mobile: m, otp } = res.locals.body as { mobile: string; otp: string };
-  const e = otps.get(m);
-  if (!e || e.expiresAt < Date.now()) throw HttpError.badRequest('OTP expired. Please request a new one.', 'OTP_EXPIRED');
-  if (++e.attempts > env.OTP_MAX_ATTEMPTS) {
-    e.expiresAt = 0;
+const verifyBody = z.object({ mobile, otp: z.string().regex(/^\d{6}$/, 'OTP must be 6 digits'), acceptTerms: z.boolean().optional() });
+authRouter.post('/verify-otp', validate({ body: verifyBody }), async (_req, res) => {
+  const { mobile: m, otp, acceptTerms } = res.locals.body as z.infer<typeof verifyBody>;
+  const e = await Otp.findOne({ mobile: m });
+  if (!e || !e.hash || e.expiresAt.getTime() < Date.now()) throw HttpError.badRequest('OTP expired. Please request a new one.', 'OTP_EXPIRED');
+  e.attempts += 1;
+  if (e.attempts > env.OTP_MAX_ATTEMPTS) {
+    e.hash = '';
+    await e.save();
     throw HttpError.tooMany('Too many wrong attempts. Request a new OTP.');
   }
-  if (!timingSafeEqual(Buffer.from(e.hash, 'hex'), hash(otp))) throw HttpError.badRequest('Invalid OTP', 'INVALID_OTP');
-  e.expiresAt = 0; // single use (keep entry for request-rate accounting)
+  if (!timingSafeEqual(Buffer.from(e.hash, 'hex'), Buffer.from(hash(otp), 'hex'))) {
+    await e.save();
+    const left = env.OTP_MAX_ATTEMPTS - e.attempts;
+    throw HttpError.badRequest(`Invalid OTP${left > 0 ? ` — ${left} attempt${left > 1 ? 's' : ''} left` : ''}`, 'INVALID_OTP');
+  }
+  let user = await User.findOne({ mobile: m });
+  if (user?.status === 'suspended') throw new HttpError(403, 'SUSPENDED', 'This account is suspended. Contact support.');
+  const isNew = !user || user.status === 'deleted';
+  // Checked before consuming the OTP so the user can tick the box and retry with the same code.
+  if (isNew && !acceptTerms) {
+    await e.save();
+    throw HttpError.badRequest('Please accept the Terms of Use and Privacy Policy', 'CONSENT_REQUIRED');
+  }
+  e.hash = ''; // single use; keep row for request-rate accounting
+  await e.save();
+  if (!user) {
+    user = await User.create({ mobile: m, consentVersion: CONSENT_VERSION, consentAt: new Date() });
+    void notify(user._id, { type: 'system', title: 'Welcome to WorkNear 🎉', body: 'Find trusted workers within 5 KM. Zero commission, always.' });
+  } else {
+    // A pending deletion request is cancelled by logging back in.
+    if (user.status === 'deleted_request' || user.status === 'deleted') Object.assign(user, { status: 'active', deletionRequestedAt: undefined });
+    if (acceptTerms) Object.assign(user, { consentVersion: CONSENT_VERSION, consentAt: new Date() });
+  }
+  user.lastLoginAt = new Date();
+  await user.save();
 
-  // TODO: upsert User in MongoDB. Placeholder user until the users module lands.
-  const user = { id: `u_${m}`, mobile: m, name: '', roles: ['customer'], activeRole: 'customer', language: 'en', createdAt: new Date().toISOString() };
-  const { accessToken, refreshToken } = signTokens({ sub: user.id, roles: ['customer'] });
-  ok(res, { token: accessToken, refreshToken, user, isNew: true });
+  const { accessToken, refreshToken } = signTokens({ sub: String(user._id), roles: user.roles as Role[] });
+  ok(res, { token: accessToken, refreshToken, user: await userDto(String(user._id)), isNew: isNew || !user.name });
 });
 
-authRouter.post('/refresh', validate({ body: z.object({ refreshToken: z.string().min(10) }) }), (_req, res) => {
+authRouter.post('/refresh', validate({ body: z.object({ refreshToken: z.string().min(10) }) }), async (_req, res) => {
   const { refreshToken } = res.locals.body as { refreshToken: string };
   let sub: string;
   try {
@@ -89,6 +117,8 @@ authRouter.post('/refresh', validate({ body: z.object({ refreshToken: z.string()
   } catch {
     throw HttpError.unauthorized('Session expired, please login again');
   }
-  // TODO: load roles from DB and support refresh-token revocation.
-  ok(res, signTokens({ sub, roles: ['customer'] }));
+  const u = await User.findById(sub, { roles: 1, status: 1 }).lean();
+  if (!u || u.status === 'suspended' || u.status === 'deleted') throw HttpError.unauthorized('Session expired, please login again');
+  const t = signTokens({ sub, roles: u.roles as Role[] });
+  ok(res, { token: t.accessToken, refreshToken: t.refreshToken });
 });
