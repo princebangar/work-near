@@ -1,12 +1,36 @@
 import { useEffect, useState } from 'react';
-import type { AdminRole } from '@/types/admin';
+import type { AdminModule, AdminPermissions, AdminRole, PermAction } from '@/types/admin';
 
 export type PillTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger';
 
 export const isSuper = (r?: AdminRole) => r === 'super_admin';
 /** super_admin + admin (everything except support-only access). */
 export const isAdminPlus = (r?: AdminRole) => r === 'super_admin' || r === 'admin';
-export const roleLabel = (r: AdminRole) => ({ super_admin: 'Super admin', admin: 'Admin', support: 'Support' })[r];
+export const roleLabel = (r: AdminRole) => ({ super_admin: 'Super admin', admin: 'Admin', support: 'Support', sub_admin: 'Sub-admin' })[r] ?? r;
+
+/** Same rule as the server (Backend lib/permissions.ts `can`) — hides what the API would refuse anyway. */
+export function canAdmin(role: AdminRole | undefined, perms: AdminPermissions | undefined, module: AdminModule, action: PermAction = 'view') {
+  if (role === 'super_admin' || role === 'admin') return true;
+  if (role === 'support') return module === 'complaints' && (action === 'view' || action === 'edit');
+  if (role === 'sub_admin') return perms?.[module]?.[action] === true;
+  return false;
+}
+
+export const MODULES: { key: AdminModule; label: string; hint: string }[] = [
+  { key: 'dashboard', label: 'Dashboard', hint: 'KPIs and charts' },
+  { key: 'users', label: 'Users', hint: 'Customers & workers, suspend / delete, CSV' },
+  { key: 'verifications', label: 'Verifications', hint: 'Review ID documents, approve / reject' },
+  { key: 'categories', label: 'Categories', hint: 'Services and skills' },
+  { key: 'billing', label: 'Subscriptions & Transactions', hint: 'Plans, payments (refunds stay super-admin only)' },
+  { key: 'complaints', label: 'Complaints', hint: 'Reports and support tickets' },
+  { key: 'reviews', label: 'Reviews', hint: 'Hide / restore ratings' },
+  { key: 'cms', label: 'CMS', hint: 'Banners, FAQs, legal pages' },
+  { key: 'broadcast', label: 'Broadcast notifications', hint: 'Send push + inbox messages' },
+  { key: 'settings', label: 'Customization Settings', hint: 'Feature switches (maintenance stays super-admin only)' },
+];
+export const ACTIONS: { key: PermAction; label: string }[] = [
+  { key: 'view', label: 'View' }, { key: 'create', label: 'Create' }, { key: 'edit', label: 'Edit' }, { key: 'delete', label: 'Delete' },
+];
 
 /** "in_progress" → "In progress" */
 export const human = (s: string) => {

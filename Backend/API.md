@@ -46,6 +46,8 @@ User: `{ id, mobile, name, email?, avatar?, roles: ('customer'|'worker')[], acti
 | PATCH | `/me` | `{ name?, email?, language?, activeRole?, city?, notif? }` → User. Setting `activeRole:'worker'` adds the role (needs `dualRole` unless first choice) |
 | POST | `/me/avatar` | multipart `photo` → User |
 | POST | `/me/delete-request` | → `{ requested: true }` (login again cancels it) |
+| GET/POST | `/me/addresses` | Saved locations (max 10). POST `{ label: home|work|other, name?, line?, address, lat, lng }` → list. Home/Work replace the previous one |
+| PATCH/DELETE | `/me/addresses/:id` | Same body / — → list |
 | GET | `/blocked` | `Peer[]` |
 | POST | `/blocks` | `{ userId }` · DELETE `/blocks/:userId` |
 | POST/DELETE | `/me/push-tokens` | `{ token, platform }` / `{ token }` |
@@ -106,8 +108,9 @@ Razorpay flow on web: load `https://checkout.razorpay.com/v1/checkout.js`, open 
 | GET | `/complaints/me` | `[{ id (e.g. C1001), category, targetType, description, status: open\|in_progress\|resolved\|escalated, createdAt, resolution? }]` |
 | POST | `/complaints` | JSON `{ category, description(≥10), targetType?, targetId? }` or multipart with `evidence` files (≤3) |
 
-## Admin (`/admin`, admin token) — roles: super_admin > admin > support
+## Admin (`/admin`, admin token) — roles: super_admin > admin > support, plus sub_admin
 Available during maintenance. Every mutation writes an audit log (actor, time, reason).
+**sub_admin**: access is per module (dashboard, users, verifications, categories, billing, complaints, reviews, cms, broadcast, settings) and per action — GET = view, POST = create, PATCH/PUT = edit, DELETE = delete (`src/lib/permissions.ts`). Super-only routes (staff, audit logs, maintenance, refunds, plan create, grants) are never available to sub-admins. Login / `/admin/auth/me` return `permissions`.
 | Method | Path | Role | Notes |
 |---|---|---|---|
 | POST | `/admin/auth/login` | – | `{ email, password, otp? }` → `{ token, id, name, email, role, mfaEnabled }`. `MFA_REQUIRED`/`MFA_INVALID` when MFA set |
@@ -140,5 +143,6 @@ Available during maintenance. Every mutation writes an audit log (actor, time, r
 | GET | `/admin/settings` | admin+ | public settings + `featureKeys`, `updatedAt` |
 | PATCH | `/admin/settings` | admin+ (maintenance: super only) | `{ features?: Partial<Record<FeatureKey,bool>>, maintenance?: {enabled?,title?,message?,eta?}, subscriptionRequiredFor?, radiusOptions?, defaultRadiusKm?, supportEmail?, supportPhone?, appVersion? }` → broadcasts `settings:update` |
 | GET | `/admin/audit-logs?q&from&to` | super | Paginated `{ id, actor, action, target, reason, ip, at }` |
-| GET | `/admin/staff` | any; POST (super) `{ name, email, password, role }`; PATCH `/admin/staff/:id` (super) `{ role?, status?, resetMfa? }` | | `{ id, name, email, role, status, mfa, lastLoginAt }` |
+| GET | `/admin/staff` | any; POST (super) `{ name, email, password, role, permissions? }`; PATCH `/admin/staff/:id` (super) `{ role?, status?, resetMfa?, permissions? }` | | `{ id, name, email, role, status, mfa, lastLoginAt, permissions }` — sub_admin needs ≥1 permission |
+| GET | `/admin/broadcasts` | broadcast | History (paged). POST `{ title, body, link?, kind: announcement|offer, audience: all|customers|workers|custom, targetIds? }` → 202, delivered in background (inbox + push, 500/batch). DELETE `/:id` recalls it from inboxes. GET `/counts`, GET `/recipients?q&role` for the picker |
 | GET | `/admin/export/:type?from&to` | admin+ | type ∈ users, transactions, complaints → CSV (fetch as blob) |

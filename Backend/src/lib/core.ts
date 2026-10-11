@@ -70,6 +70,20 @@ export const personName = z
       .refine((s) => (s.match(/\p{L}/gu) ?? []).length >= 2, 'Name must have at least 2 letters'),
   );
 
+/**
+ * Worker display name (public profile) — may be a business name ("A1 Plumbers", "Sharma & Sons 24x7"), so digits and &
+ * are allowed, but it must still contain at least 2 letters (no "9999" or symbol-only names).
+ */
+export const DISPLAY_NAME_RE = /^[\p{L}\p{M}\d][\p{L}\p{M}\d .'&-]*$/u;
+export const displayName = z
+  .string()
+  .trim()
+  .transform((s) => s.replace(/\s+/g, ' '))
+  .pipe(
+    z.string().min(2, 'Name must be at least 2 characters').max(80).regex(DISPLAY_NAME_RE, 'Use letters, numbers, spaces and . \' & - only')
+      .refine((s) => (s.match(/\p{L}/gu) ?? []).length >= 2, 'Name must have at least 2 letters'),
+  );
+
 /** Escapes user text before using it inside a RegExp (prevents ReDoS / regex injection). */
 export const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 

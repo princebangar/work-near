@@ -580,7 +580,7 @@ adminRouter.get('/staff', ANY, async (req, res) => {
   ok(res, rows.map(staffDto));
 });
 const staffRole = z.enum(['super_admin', 'admin', 'support', 'sub_admin']);
-const permsBody = z.record(z.enum(ADMIN_MODULES), z.record(z.enum(PERM_ACTIONS), z.boolean())).optional();
+const permsBody = z.partialRecord(z.enum(ADMIN_MODULES), z.partialRecord(z.enum(PERM_ACTIONS), z.boolean())).optional();
 const staffBody = z.object({ name: personName, email: z.email(), password: z.string().min(8).max(100), role: staffRole, permissions: permsBody });
 const hasAnyPerm = (p: ReturnType<typeof normalizePermissions>) => Object.keys(p).length > 0;
 adminRouter.post('/staff', SUPER, validate({ body: staffBody }), async (req, res) => {

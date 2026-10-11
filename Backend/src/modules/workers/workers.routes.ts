@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { HttpError, ok, personName, validate } from '../../lib/core.js';
+import { HttpError, displayName, ok, validate } from '../../lib/core.js';
 import { optionalAuth, requireAuth } from '../../middlewares/auth.js';
 import { requireFeature } from '../../middlewares/features.js';
 import { privateRel, publicUrl, removeFile, removePublic, upload } from '../../lib/upload.js';
@@ -68,7 +68,7 @@ const priceRange = z.string().trim().max(40).refine((s) => {
 }, 'Minimum price cannot be more than maximum price');
 
 const profileBody = z.object({
-  name: personName,
+  name: displayName,
   bio: z.string().trim().max(1000).default(''),
   experience: z.coerce.number().int().min(0).max(60),
   categoryId: z.string().max(40),

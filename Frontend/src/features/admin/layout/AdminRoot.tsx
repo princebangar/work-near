@@ -3,6 +3,7 @@ import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoti
 import { Navigate, Route, Routes, useLocation } from 'react-router';
 import { Skeleton } from '@/components/ui';
 import { useAuth } from '@/store';
+import { useAdminMe } from '@/api/admin';
 import { cn } from '@/lib/format';
 import type { AdminRole } from '@/types/admin';
 import { AdminStyles } from '../components/styles';
@@ -23,6 +24,7 @@ const CmsPage = lazy(() => import('../pages/Cms').then((m) => ({ default: m.CmsP
 const SettingsPage = lazy(() => import('../pages/Settings').then((m) => ({ default: m.SettingsPage })));
 const AuditPage = lazy(() => import('../pages/Audit').then((m) => ({ default: m.AuditPage })));
 const StaffPage = lazy(() => import('../pages/Staff').then((m) => ({ default: m.StaffPage })));
+const BroadcastPage = lazy(() => import('../pages/Broadcast').then((m) => ({ default: m.BroadcastPage })));
 const AccountPage = lazy(() => import('../pages/Account').then((m) => ({ default: m.AccountPage })));
 
 const PAGES: Record<string, LazyExoticComponent<ComponentType>> = {
@@ -34,6 +36,7 @@ const PAGES: Record<string, LazyExoticComponent<ComponentType>> = {
   complaints: ComplaintsPage,
   reviews: ReviewsPage,
   cms: CmsPage,
+  broadcast: BroadcastPage,
   settings: SettingsPage,
   audit: AuditPage,
   staff: StaffPage,
@@ -52,8 +55,17 @@ function AdminShell({ role }: { role: AdminRole }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { pathname } = useLocation();
-  const items = itemsFor(role);
-  const home = homeFor(role);
+  const perms = useAuth((s) => s.admin?.permissions);
+  const items = itemsFor(role, perms);
+  const home = homeFor(role, perms);
+  // Role / permissions can be changed by the super admin at any time — keep the session copy in sync.
+  const me = useAdminMe();
+  useEffect(() => {
+    const a = useAuth.getState().admin;
+    if (me.data && a && (me.data.role !== a.role || JSON.stringify(me.data.permissions) !== JSON.stringify(a.permissions ?? {}))) {
+      useAuth.getState().setAdmin({ ...a, role: me.data.role, permissions: me.data.permissions });
+    }
+  }, [me.data]);
 
   // Restore the app title when leaving the panel (declared first so it captures the original).
   useEffect(() => {

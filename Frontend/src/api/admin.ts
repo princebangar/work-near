@@ -9,7 +9,7 @@ import { ApiError, adminHttp } from '@/lib/http';
 import { toast, useAuth, useSettings } from '@/store';
 import type * as A from '@/types/admin';
 
-type ListName = 'users' | 'verifications' | 'subscriptions' | 'transactions' | 'complaints' | 'reviews' | 'audit';
+type ListName = 'users' | 'verifications' | 'subscriptions' | 'transactions' | 'complaints' | 'reviews' | 'audit' | 'broadcasts' | 'recipients';
 
 export const ak = {
   root: ['adm'] as const,
@@ -26,6 +26,7 @@ export const ak = {
   faqs: ['adm', 'faqs'] as const,
   pages: ['adm', 'pages'] as const,
   settings: ['adm', 'settings'] as const,
+  broadcastCounts: ['adm', 'broadcast-counts'] as const,
 };
 
 /** Human-readable message for any API error (first field error for validation failures). */
@@ -475,7 +476,27 @@ export const useUpdateStaff = () =>
   useAction(
     (v: { id: string; patch: A.StaffPatch }) => adminHttp.patch<A.AdminStaff>(`/admin/staff/${v.id}`, v.patch),
     (qc, r) => qc.setQueryData<A.AdminStaff[]>(ak.staff, (l) => l?.map((s) => (s.id === r.id ? r : s))),
-    (_r, v) => (v.patch.resetMfa ? 'MFA reset — they will set it up again' : v.patch.status ? (v.patch.status === 'active' ? 'Account enabled' : 'Account disabled') : 'Role updated'),
+    (_r, v) => (v.patch.resetMfa ? 'MFA reset — they will set it up again' : v.patch.status ? (v.patch.status === 'active' ? 'Account enabled' : 'Account disabled') : v.patch.permissions ? 'Permissions saved' : 'Role updated'),
+  );
+
+// ---------- Broadcast notifications ----------
+export const useBroadcasts = () => useList<A.BroadcastRow>('broadcasts', '/admin/broadcasts', {}, { limit: 20 });
+export const useBroadcastCounts = () =>
+  useQuery({ queryKey: ak.broadcastCounts, queryFn: ({ signal }) => adminHttp.get<A.BroadcastCounts>('/admin/broadcasts/counts', undefined, signal), staleTime: 60_000 });
+/** Recipient picker for "Selected people" — only fetched while that option is open. */
+export const useBroadcastRecipients = (p: A.ListParams, enabled: boolean) => useList<A.BroadcastRecipient>('recipients', '/admin/broadcasts/recipients', p, { enabled, limit: 30 });
+
+export const useSendBroadcast = () =>
+  useAction(
+    (b: A.BroadcastInput) => adminHttp.post<A.BroadcastRow>('/admin/broadcasts', b),
+    (qc) => qc.invalidateQueries({ queryKey: ak.list('broadcasts') }),
+    'Broadcast is being sent — progress shows in history',
+  );
+export const useDeleteBroadcast = () =>
+  useAction(
+    (id: string) => adminHttp.del(`/admin/broadcasts/${id}`),
+    (qc) => qc.invalidateQueries({ queryKey: ak.list('broadcasts') }),
+    'Broadcast removed from history and from users’ inboxes',
   );
 
 // ---------- Files ----------

@@ -266,7 +266,7 @@ function MapView({ mode, pickMode, initial, circleKm, title, onBack, onPick, onD
       const c0 = start ?? INDIA;
       map.current = new maps.Map(el.current, {
         center: { lat: c0.lat, lng: c0.lng }, zoom: !start ? INDIA.zoom : !ringKm ? 16 : ringKm <= 5 ? 13 : ringKm <= 10 ? 12 : 11,
-        disableDefaultUI: true, zoomControl: true, clickableIcons: false, gestureHandling: 'greedy',
+        disableDefaultUI: true, zoomControl: false, clickableIcons: false, gestureHandling: 'greedy', // pinch / scroll to zoom; GPS button sits bottom-right
       });
       if (ringKm) {
         const c = brand();
@@ -346,7 +346,7 @@ function MapView({ mode, pickMode, initial, circleKm, title, onBack, onPick, onD
             </div>
           </div>
         )}
-        <div className="pt-safe absolute inset-x-0 top-0 z-20 flex items-start gap-2 p-3">
+        <div className="absolute inset-x-0 top-0 z-20 flex items-start gap-2 px-3 pt-[calc(env(safe-area-inset-top)+12px)]">
           <button type="button" onClick={onBack} aria-label={t('back')} className="grid size-12 shrink-0 place-items-center rounded-2xl bg-surface text-ink shadow-md ring-1 ring-line"><ArrowLeft size={22} /></button>
           {!mapFailed && <PlaceSearch onPlace={moveTo} className="flex-1" />}
         </div>

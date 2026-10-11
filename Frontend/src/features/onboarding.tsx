@@ -12,7 +12,7 @@ import { useAuth, useFeature, useGeo, usePrefs, toast } from '@/store';
 import { useObjectUrl, useRadius } from '@/hooks/useAppSettings';
 import { useT, type TKey } from '@/i18n';
 import { cn, date, getDeviceLocation, GpsError } from '@/lib/format';
-import { cleanName, nameError } from '@/lib/validate';
+import { cleanName, displayNameError } from '@/lib/validate';
 import { mapsEnabled, reverseGeocode } from '@/lib/maps';
 import type { MyWorkerProfile, VerificationType } from '@/types';
 
@@ -111,7 +111,7 @@ function OnboardingForm({ existing }: { existing: MyWorkerProfile | null }) {
   const check = (k: StepKey): Record<string, string> => {
     const e: Record<string, string> = {};
     if (k === 'basic') {
-      const n = nameError(f.name);
+      const n = displayNameError(f.name);
       if (n) e.name = t(n);
       if (f.experience === '') e.experience = t('expRequired');
       else if (exp > 60) e.experience = t('max60');

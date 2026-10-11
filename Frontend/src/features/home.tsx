@@ -124,7 +124,8 @@ function CustomerHome() {
           </div>
         )}
 
-        <section>
+        {/* Categories come only from admin — hide the block until at least one exists. */}
+        {cats.data?.length !== 0 && <section>
           <SectionTitle action={<Link to="/search" className="text-sm font-semibold text-primary">{t('seeAll')}</Link>}>{t('categories')}</SectionTitle>
           {cats.isError ? (
             <ErrorState message={errorMessage(cats.error)} onRetry={() => cats.refetch()} />
@@ -139,7 +140,7 @@ function CustomerHome() {
               ))}
             </div>
           )}
-        </section>
+        </section>}
 
         <section>
           <SectionTitle action={<Link to="/search?sort=rating" className="text-sm font-semibold text-primary">{t('seeAll')}</Link>}>{t('topNearby')}</SectionTitle>
