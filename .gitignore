@@ -1,0 +1,5 @@
+# Local-only folders (never committed)
+# scripts/ — dev/test helpers (seed, push test, smoke test). Production does not need them: see Backend/src/lib/bootstrap.ts
+# docs/    — internal reports
+scripts/
+docs/
