@@ -6,6 +6,7 @@ import { errorMessage, fieldErrors, isApiError, qk, setUser, useRequestOtp, useU
 import { useAuth, useFeature, usePrefs, useSettings, toast } from '@/store';
 import { useT } from '@/i18n';
 import { cn } from '@/lib/format';
+import { cleanName, nameError } from '@/lib/validate';
 import { http, queryClient } from '@/lib/http';
 import { APP } from '@/config/env';
 import type { Role, Session, User } from '@/types';
@@ -288,10 +289,12 @@ export function RoleSetup() {
   ];
   const chosen = workerReg ? role : 'customer';
   const errs = fieldErrors(m.error);
+  const nameErr = nameError(name);
   const save = () => {
+    if (nameErr) return;
     submitted.current = true;
     m.mutate(
-      { name: name.trim(), activeRole: chosen, language: lang },
+      { name: cleanName(name), activeRole: chosen, language: lang },
       { onSuccess: () => nav(chosen === 'worker' ? '/onboarding' : '/', { replace: true }), onError: () => (submitted.current = false) },
     );
   };
@@ -308,11 +311,12 @@ export function RoleSetup() {
         ))}
       </div>
       <div className="mt-6">
-        <Input label={t('yourName')} value={name} maxLength={80} autoComplete="name" onChange={(e) => setName(e.target.value)} placeholder="e.g. Rahul Sharma" error={errs.name} />
+        <Input label={t('yourName')} value={name} maxLength={80} autoComplete="name" onChange={(e) => setName(e.target.value)} placeholder="e.g. Rahul Sharma"
+          error={errs.name ?? (name.trim() && nameErr ? t(nameErr) : undefined)} />
       </div>
       {m.error && !errs.name && <p role="alert" className="mt-2 text-sm text-danger">{errorMessage(m.error)}</p>}
       <div className="flex-1" />
-      <Button size="lg" block className="mb-4" disabled={name.trim().length < 2} loading={m.isPending} onClick={save}>{t('continue')}</Button>
+      <Button size="lg" block className="mb-4" disabled={!!nameErr} loading={m.isPending} onClick={save}>{t('continue')}</Button>
     </div>
   );
 }

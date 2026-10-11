@@ -7,12 +7,12 @@ import { Review, Verification, WorkerProfile } from '../models/worker.js';
 import { Conversation, Message } from '../models/chat.js';
 import { Payment, Plan, Subscription } from '../models/billing.js';
 import { Banner, Category, Faq, Page, Setting } from '../models/content.js';
-import { Admin, AuditLog, Complaint, Counter, Notification, SearchLog } from '../models/ops.js';
+import { Admin, AuditLog, Broadcast, Complaint, Counter, Notification, SearchLog } from '../models/ops.js';
 import { PushToken } from '../models/PushToken.js';
 
 const MODELS: Model<never>[] = [
   User, Otp, Block, WorkerProfile, Verification, Review, Conversation, Message, Plan, Subscription, Payment,
-  Category, Banner, Faq, Page, Setting, Admin, Complaint, Notification, AuditLog, SearchLog, Counter, PushToken,
+  Category, Banner, Faq, Page, Setting, Admin, Complaint, Notification, AuditLog, SearchLog, Counter, PushToken, Broadcast,
 ] as never[];
 
 /**

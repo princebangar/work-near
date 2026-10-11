@@ -19,6 +19,7 @@ import { categoriesWithCounts } from '../catalog/catalog.routes.js';
 import { refreshRating } from '../workers/workers.service.js';
 import { grant, planDto, refundPayment } from '../subscription/subscription.service.js';
 import { hashPassword } from '../../lib/password.js';
+import { broadcastRouter } from './broadcast.routes.js';
 
 export const adminRouter = Router();
 const SUPER = requireAdmin('super_admin');
@@ -643,3 +644,8 @@ adminRouter.get('/export/:type', ANY, validate({ params: z.object({ type: z.enum
   res.send('﻿' + csv(rows));
 });
 
+
+// ======================================================================
+// Broadcast notifications
+// ======================================================================
+adminRouter.use('/broadcasts', broadcastRouter);

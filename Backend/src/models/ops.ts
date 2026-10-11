@@ -48,14 +48,37 @@ const notificationSchema = new Schema(
     title: { type: String, required: true },
     body: { type: String, default: '' },
     link: String,
+    broadcast: { type: Schema.Types.ObjectId, ref: 'Broadcast' }, // set when sent by an admin broadcast (lets admin recall it)
     readAt: Date,
     createdAt: { type: Date, default: Date.now },
   },
   { versionKey: false },
 );
 notificationSchema.index({ user: 1, createdAt: -1 });
+notificationSchema.index({ broadcast: 1 }, { sparse: true });
 notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 180 * 24 * 3600 }); // keep 6 months
 export const Notification = model('Notification', notificationSchema);
+
+/** Admin → users announcements (inbox + push). History for the Broadcast page. */
+const broadcastSchema = new Schema(
+  {
+    title: { type: String, required: true, trim: true, maxlength: 80 },
+    body: { type: String, required: true, trim: true, maxlength: 500 },
+    link: { type: String, default: '' },
+    kind: { type: String, enum: ['announcement', 'offer'], default: 'announcement' }, // offers respect the user's "Offers" setting
+    audience: { type: String, enum: ['all', 'customers', 'workers', 'custom'], required: true },
+    targetIds: { type: [Schema.Types.ObjectId], default: [] },
+    status: { type: String, enum: ['sending', 'sent', 'failed'], default: 'sending' },
+    recipients: { type: Number, default: 0 },
+    pushSent: { type: Number, default: 0 },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'Admin' },
+    createdByName: String,
+    error: String,
+  },
+  { timestamps: true, versionKey: false },
+);
+broadcastSchema.index({ createdAt: -1 });
+export const Broadcast = model('Broadcast', broadcastSchema);
 
 /** Immutable admin action log (SRS 7, 13). */
 const auditLogSchema = new Schema(

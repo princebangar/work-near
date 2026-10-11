@@ -8,6 +8,7 @@ import { generateSecret, otpauthUrl, verifyTotp } from '../../lib/totp.js';
 import { ipKey, limiter } from '../../lib/limits.js';
 import { hashPassword, verifyPassword } from '../../lib/password.js';
 import { audit } from '../../lib/audit.js';
+import { normalizePermissions } from '../../lib/permissions.js';
 import { Admin } from '../../models/ops.js';
 
 export const adminAuthRouter = Router();
@@ -23,9 +24,9 @@ const accountLimiter = limiter({
 const password = z.string().min(8, 'Password must be at least 8 characters').max(100);
 const sameSecret = (a: string, b: string) => timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest());
 
-const session = (a: { _id: unknown; name: string; email: string; role: string; mfaSecret?: string | null }) => ({
+const session = (a: { _id: unknown; name: string; email: string; role: string; mfaSecret?: string | null; permissions?: unknown }) => ({
   token: signAdmin({ sub: String(a._id), role: a.role as AdminRole, name: a.name }),
-  id: String(a._id), name: a.name, email: a.email, role: a.role, mfaEnabled: !!a.mfaSecret,
+  id: String(a._id), name: a.name, email: a.email, role: a.role, mfaEnabled: !!a.mfaSecret, permissions: normalizePermissions(a.permissions),
 });
 
 const loginBody = z.object({ email: z.email(), password: z.string().min(1).max(100), otp: z.string().max(6).optional() });
@@ -72,7 +73,7 @@ adminAuthRouter.post('/register', loginLimiter, validate({ body: registerBody })
 // ---------- Signed-in admin ----------
 adminAuthRouter.get('/me', requireAdmin(), async (req, res) => {
   const a = await Admin.findById(req.admin!.sub).lean();
-  ok(res, { id: String(a!._id), name: a!.name, email: a!.email, role: a!.role, mfaEnabled: !!a!.mfaSecret, lastLoginAt: a!.lastLoginAt?.toISOString(), loginHistory: a!.loginHistory.slice(-10).reverse() });
+  ok(res, { id: String(a!._id), name: a!.name, email: a!.email, role: a!.role, permissions: normalizePermissions(a!.permissions), mfaEnabled: !!a!.mfaSecret, lastLoginAt: a!.lastLoginAt?.toISOString(), loginHistory: a!.loginHistory.slice(-10).reverse() });
 });
 
 // Pending secret lives in memory for 10 minutes until confirmed with a valid code.

@@ -50,7 +50,7 @@ function HomeHeader() {
           <span className="grid size-10 shrink-0 place-items-center rounded-full bg-white/15"><MapPin size={20} /></span>
           <span className="min-w-0">
             <span className="block truncate text-xs text-white/75">{t('hello')}, {name} 👋</span>
-            <span className="flex items-center gap-1 text-[15px] font-bold"><span className="truncate">{point.label}</span><ChevronDown size={16} className="shrink-0" /></span>
+            <span className="flex items-center gap-1 text-[15px] font-bold"><span className="truncate">{point?.label ?? t('setLocation')}</span><ChevronDown size={16} className="shrink-0" /></span>
           </span>
         </button>
         <HeaderActions />
@@ -108,7 +108,8 @@ function CustomerHome() {
   const { radiusKm, options } = useRadius();
   const cats = useCategories();
   const banners = useBanners(bannersOn);
-  const top = useWorkerSearch({ lat: point.lat, lng: point.lng, radiusKm, sort: 'rating' });
+  const top = useWorkerSearch({ lat: point?.lat ?? 0, lng: point?.lng ?? 0, radiusKm, sort: 'rating' }, !!point);
+  const [locOpen, setLocOpen] = useState(false);
   const topList = top.data?.pages[0]?.items.slice(0, 4);
   const showBanners = bannersOn && (banners.isLoading || (banners.data?.length ?? 0) > 0);
   return (
@@ -143,13 +144,22 @@ function CustomerHome() {
         <section>
           <SectionTitle action={<Link to="/search?sort=rating" className="text-sm font-semibold text-primary">{t('seeAll')}</Link>}>{t('topNearby')}</SectionTitle>
           <div className="space-y-3">
-            {top.isLoading && Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="h-28" />)}
+            {!point && (
+              <Card className="p-5 text-center">
+                <MapPin className="mx-auto mb-2 text-primary" />
+                <p className="font-semibold">{t('setLocation')}</p>
+                <p className="mt-1 text-sm text-ink-2">{t('setLocationSub')}</p>
+                <Button size="sm" className="mt-3" onClick={() => setLocOpen(true)}>{t('selectLocation')}</Button>
+                <LocationSheet open={locOpen} onClose={() => setLocOpen(false)} />
+              </Card>
+            )}
+            {point && top.isLoading && Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="h-28" />)}
             {top.isError && <ErrorState message={errorMessage(top.error)} onRetry={() => top.refetch()} />}
             {topList?.map((w) => <WorkerCard key={w.id} w={w} />)}
             {topList?.length === 0 && (
               <Card className="p-5 text-center">
                 <p className="font-semibold">{t('noWorkers')}</p>
-                <p className="mt-1 text-sm text-ink-2">{t('within')} {radiusKm} KM · {point.label}</p>
+                <p className="mt-1 text-sm text-ink-2">{t('within')} {radiusKm} KM · {point?.label}</p>
                 {radiusKm < Math.max(...options) && (
                   <Button variant="soft" size="sm" className="mt-3" onClick={() => nav('/search')}>{t('increaseRadius')}</Button>
                 )}

@@ -5,7 +5,6 @@ import { http } from '@/lib/http';
 import { connectSocket, onSocket } from '@/lib/socket';
 import { toggleTheme, type ThemeTransition } from '@/lib/theme';
 import { useAuth, useSettings, useTheme, toast } from '@/store';
-import { APP } from '@/config/env';
 import { cn } from '@/lib/format';
 import type { AppNotification, AppSettings } from '@/types';
 
@@ -83,7 +82,7 @@ const TOOLS = [
 
 export function MaintenanceScreen() {
   const m = useSettings((s) => s.settings?.maintenance);
-  const email = useSettings((s) => s.settings?.supportEmail) ?? APP.supportEmail;
+  const email = useSettings((s) => s.settings?.supportEmail) || '';
   const setSettings = useSettings((s) => s.set);
   const [busy, setBusy] = useState(false);
   const retry = async () => {
@@ -129,7 +128,7 @@ export function MaintenanceScreen() {
         <button onClick={retry} disabled={busy} className="mb-3 flex h-13 w-full max-w-sm items-center justify-center gap-2 rounded-2xl bg-primary font-semibold text-on-primary shadow-sm shadow-primary/30 transition active:scale-[.98] disabled:opacity-60">
           <RefreshCw size={18} className={cn(busy && 'animate-spin')} /> Try again
         </button>
-        <a href={`mailto:${email}`} className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-ink-2"><Mail size={15} />{email}</a>
+        {email && <a href={`mailto:${email}`} className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-ink-2"><Mail size={15} />{email}</a>}
       </div>
       <ThemeToggle className="absolute top-[calc(env(safe-area-inset-top)+12px)] right-4 bg-white/15 text-white" />
     </div>

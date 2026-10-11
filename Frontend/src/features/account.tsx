@@ -8,6 +8,7 @@ import { Avatar, Badge, Button, Card, EmptyState, ErrorState, Input, Sheet, Skel
 import { FilePicker } from '@/components/shared';
 import { ThemeToggle } from '@/components/system';
 import { toggleTheme } from '@/lib/theme';
+import { cleanName, nameError } from '@/lib/validate';
 import {
   errorMessage, fieldErrors, toastError, unregisterPush, useBlocked, useDeleteRequest, useEnablePush, useMySubscription, useUnblockUser, useUpdateMe, useUploadAvatar,
 } from '@/api';
@@ -172,7 +173,7 @@ export function Account() {
 
         <Group title={t('support')}>
           <Row icon={HelpCircle} label={complaintsOn ? t('helpComplaints') : t('helpFaqs')} to="/help" />
-          <Row icon={Mail} label={t('emailSupport')} value={support.email} href={`mailto:${support.email}`} />
+          {support.email && <Row icon={Mail} label={t('emailSupport')} value={support.email} href={`mailto:${support.email}`} />}
           {support.phone && <Row icon={Phone} label={t('callSupport')} value={support.phone} href={`tel:${support.phone.replace(/\s/g, '')}`} />}
         </Group>
 
@@ -220,16 +221,17 @@ export function EditProfile() {
   const avatar = useUploadAvatar();
   const errs = fieldErrors(m.error);
   const emailOk = !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const dirty = name.trim() !== (user?.name ?? '') || email.trim() !== (user?.email ?? '');
+  const nameErr = nameError(name);
+  const dirty = cleanName(name) !== (user?.name ?? '') || email.trim() !== (user?.email ?? '');
   const save = () =>
-    m.mutate({ name: name.trim(), email: email.trim() }, {
+    m.mutate({ name: cleanName(name), email: email.trim() }, {
       onSuccess: () => { toast(t('profileUpdated')); if (history.length > 1) nav(-1); else nav('/account'); },
       onError: (e) => { if (!Object.keys(fieldErrors(e)).length) toastError(e); },
     });
   return (
     <div className="min-h-dvh bg-surface">
       <TopBar title={t('editProfile')} />
-      <form onSubmit={(e) => { e.preventDefault(); if (dirty && emailOk && name.trim().length >= 2) save(); }} className="space-y-4 p-4">
+      <form onSubmit={(e) => { e.preventDefault(); if (dirty && emailOk && !nameErr) save(); }} className="space-y-4 p-4">
         <div className="flex flex-col items-center gap-1 py-2">
           <FilePicker onFiles={([f]) => avatar.mutate(f, { onSuccess: () => toast(t('photoUpdated')), onError: (e) => toastError(e) })}>
             {(open) => (
@@ -241,7 +243,7 @@ export function EditProfile() {
           </FilePicker>
           <span className="text-xs text-ink-3">{t('photoHint')}</span>
         </div>
-        <Input label={t('yourName')} value={name} maxLength={80} autoComplete="name" onChange={(e) => setName(e.target.value)} error={errs.name ?? (name.trim().length < 2 ? t('nameMin') : undefined)} />
+        <Input label={t('yourName')} value={name} maxLength={80} autoComplete="name" onChange={(e) => setName(e.target.value)} error={errs.name ?? (nameErr ? t(nameErr) : undefined)} />
         <Input label={t('mobile')} value={`+91 ${user?.mobile ?? ''}`} disabled hint={t('mobileFixed')} />
         <Input label={`${t('email')} (${t('optional')})`} type="email" inputMode="email" autoComplete="email" maxLength={120} value={email}
           onChange={(e) => setEmail(e.target.value)} error={errs.email ?? (!emailOk ? t('invalidEmail') : undefined)} />
@@ -250,7 +252,7 @@ export function EditProfile() {
             {t('workerNameNote')} <Link to="/onboarding" className="font-semibold text-primary">{t('editWorkerProfile')}</Link>
           </p>
         )}
-        <Button type="submit" block size="lg" disabled={!dirty || !emailOk || name.trim().length < 2} loading={m.isPending}>{t('save')}</Button>
+        <Button type="submit" block size="lg" disabled={!dirty || !emailOk || !!nameErr} loading={m.isPending}>{t('save')}</Button>
       </form>
     </div>
   );
