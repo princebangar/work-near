@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { HttpError, ok, validate } from '../../lib/core.js';
+import { HttpError, ok, personName, validate } from '../../lib/core.js';
 import { requireAuth } from '../../middlewares/auth.js';
 import { publicUrl, removePublic, upload } from '../../lib/upload.js';
 import { uploadLimiter } from '../../lib/limits.js';
@@ -17,7 +17,7 @@ meRouter.use(requireAuth);
 meRouter.get('/me', async (req, res) => ok(res, await userDto(req.user!.sub)));
 
 const patchBody = z.object({
-  name: z.string().trim().min(2).max(80).optional(),
+  name: personName.optional(),
   email: z.union([z.email().max(120), z.literal('')]).optional(),
   language: z.enum(['en', 'hi']).optional(),
   activeRole: z.enum(['customer', 'worker']).optional(),
@@ -61,6 +61,50 @@ meRouter.post('/me/delete-request', async (req, res) => {
   await PushToken.deleteMany({ userId: req.user!.sub }); // no more pushes to this account's devices
   await WorkerProfile.updateOne({ user: req.user!.sub }, { visible: false });
   ok(res, { requested: true });
+});
+
+// ---------- Saved addresses (location picker: Home / Work / Other) ----------
+const MAX_ADDRESSES = 10;
+const addressBody = z.object({
+  label: z.enum(['home', 'work', 'other']),
+  name: z.string().trim().max(40).default(''),
+  line: z.string().trim().max(120).default(''),
+  address: z.string().trim().min(2).max(200),
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+});
+type AddressRow = z.infer<typeof addressBody> & { _id: unknown };
+const addressDto = (a: AddressRow) => ({ id: String(a._id), label: a.label, name: a.name, line: a.line, address: a.address, lat: a.lat, lng: a.lng });
+const myAddresses = async (id: string) => ((await User.findById(id, { addresses: 1 }).lean())?.addresses ?? []).map((a) => addressDto(a as AddressRow));
+const addrId = validate({ params: z.object({ id: z.string().regex(/^[a-f\d]{24}$/) }) });
+
+meRouter.get('/me/addresses', async (req, res) => ok(res, await myAddresses(req.user!.sub)));
+
+meRouter.post('/me/addresses', validate({ body: addressBody }), async (req, res) => {
+  const b = res.locals.body as z.infer<typeof addressBody>;
+  // Home and Work are single slots — saving again replaces the old one.
+  if (b.label !== 'other') await User.updateOne({ _id: req.user!.sub }, { $pull: { addresses: { label: b.label } } });
+  const r = await User.updateOne(
+    { _id: req.user!.sub, [`addresses.${MAX_ADDRESSES - 1}`]: { $exists: false } },
+    { $push: { addresses: b } },
+  );
+  if (!r.modifiedCount) throw HttpError.badRequest(`You can save up to ${MAX_ADDRESSES} addresses`);
+  ok(res, await myAddresses(req.user!.sub), 201);
+});
+
+meRouter.patch('/me/addresses/:id', addrId, validate({ body: addressBody }), async (req, res) => {
+  const { id } = res.locals.params as { id: string };
+  const b = res.locals.body as z.infer<typeof addressBody>;
+  if (b.label !== 'other') await User.updateOne({ _id: req.user!.sub }, { $pull: { addresses: { label: b.label, _id: { $ne: id } } } });
+  const set = Object.fromEntries(Object.entries(b).map(([k, v]) => [`addresses.$.${k}`, v]));
+  const r = await User.updateOne({ _id: req.user!.sub, 'addresses._id': id }, { $set: set });
+  if (!r.matchedCount) throw HttpError.notFound('Address not found');
+  ok(res, await myAddresses(req.user!.sub));
+});
+
+meRouter.delete('/me/addresses/:id', addrId, async (req, res) => {
+  await User.updateOne({ _id: req.user!.sub }, { $pull: { addresses: { _id: (res.locals.params as { id: string }).id } } });
+  ok(res, await myAddresses(req.user!.sub));
 });
 
 meRouter.get('/blocked', async (req, res) => {

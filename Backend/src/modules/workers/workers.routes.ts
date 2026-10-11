@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { HttpError, ok, validate } from '../../lib/core.js';
+import { HttpError, ok, personName, validate } from '../../lib/core.js';
 import { optionalAuth, requireAuth } from '../../middlewares/auth.js';
 import { requireFeature } from '../../middlewares/features.js';
 import { privateRel, publicUrl, removeFile, removePublic, upload } from '../../lib/upload.js';
@@ -60,17 +60,24 @@ workersRouter.get('/me/profile', requireAuth, async (req, res) => {
   ok(res, await myProfileDto(req.user!.sub)); // null → not a worker yet
 });
 
+// "₹300 – ₹900" / "From ₹300" / "Up to ₹900" (built by the app). Min must not exceed max.
+const priceRange = z.string().trim().max(40).refine((s) => {
+  if (!s) return true;
+  const n = (s.match(/\d+/g) ?? []).map(Number);
+  return n.length >= 1 && n.length <= 2 && n.every((x) => x > 0 && x <= 999999) && (n.length < 2 || n[0]! <= n[1]!);
+}, 'Minimum price cannot be more than maximum price');
+
 const profileBody = z.object({
-  name: z.string().trim().min(2).max(80),
+  name: personName,
   bio: z.string().trim().max(1000).default(''),
   experience: z.coerce.number().int().min(0).max(60),
   categoryId: z.string().max(40),
-  skills: z.array(z.string().trim().min(1).max(40)).min(1).max(15),
-  languages: z.array(z.string().max(30)).max(8).optional(),
+  skills: z.array(z.string().trim().min(1).max(40)).min(1, 'Pick at least one skill').max(15),
+  languages: z.array(z.string().trim().min(1).max(30)).min(1, 'Pick at least one language').max(8),
   radius: z.union([z.literal(5), z.literal(10), z.literal(15)]).default(5),
-  locality: z.string().trim().min(2).max(120),
-  hours: z.string().trim().max(80).optional(),
-  priceRange: z.string().trim().max(40).optional(),
+  locality: z.string().trim().min(2, 'Enter your service area').max(120),
+  hours: z.string().trim().min(3, 'Enter your working hours').max(80),
+  priceRange: priceRange.optional(),
   lat, lng,
   showPhone: z.boolean().optional(),
 });

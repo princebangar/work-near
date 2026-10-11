@@ -1,8 +1,9 @@
 import { Router, type Request } from 'express';
 import { Types } from 'mongoose';
 import { z } from 'zod';
-import { HttpError, escapeRegex, ok, paged, startOfDay, validate, type AnyFilter } from '../../lib/core.js';
-import { requireAdmin } from '../../middlewares/auth.js';
+import { HttpError, escapeRegex, ok, paged, personName, startOfDay, validate, type AnyFilter } from '../../lib/core.js';
+import { requireAdmin, requirePerm as P } from '../../middlewares/auth.js';
+import { ADMIN_MODULES, MODULE_LABEL, PERM_ACTIONS, can, normalizePermissions, type AdminModule } from '../../lib/permissions.js';
 import { audit } from '../../lib/audit.js';
 import { notify } from '../../lib/notify.js';
 import { broadcast, emitTo } from '../../lib/socket.js';
@@ -20,7 +21,6 @@ import { grant, planDto, refundPayment } from '../subscription/subscription.serv
 import { hashPassword } from '../../lib/password.js';
 
 export const adminRouter = Router();
-const ADMINS = requireAdmin('super_admin', 'admin');
 const SUPER = requireAdmin('super_admin');
 const ANY = requireAdmin();
 
@@ -41,7 +41,7 @@ const range = (q: ListQ, field = 'createdAt') =>
 // ======================================================================
 // Dashboard
 // ======================================================================
-adminRouter.get('/kpis', ADMINS, async (_req, res) => {
+adminRouter.get('/kpis', P('dashboard'), async (_req, res) => {
   const today = startOfDay();
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
   const weekAgo = new Date(today.getTime() - 6 * 86_400_000);
@@ -107,11 +107,13 @@ adminRouter.get('/kpis', ADMINS, async (_req, res) => {
 
 /** Sidebar badge counts — one cheap call, polled by the panel. */
 adminRouter.get('/badges', ANY, async (req, res) => {
-  const support = req.admin!.role === 'support';
+  const a = req.admin!;
+  const support = a.role === 'support';
+  // Only count queues this staff member can actually open.
   const [verifications, complaints, deletions] = await Promise.all([
-    support ? 0 : Verification.countDocuments({ status: 'pending' }),
-    Complaint.countDocuments({ status: { $in: ['open', 'escalated'] }, ...(support && { assignedTo: req.admin!.sub }) }),
-    support ? 0 : User.countDocuments({ status: 'deleted_request' }),
+    can(a, 'verifications', 'view') ? Verification.countDocuments({ status: 'pending' }) : 0,
+    can(a, 'complaints', 'view') ? Complaint.countDocuments({ status: { $in: ['open', 'escalated'] }, ...(support && { assignedTo: a.sub }) }) : 0,
+    can(a, 'users', 'view') ? User.countDocuments({ status: 'deleted_request' }) : 0,
   ]);
   ok(res, { verifications, complaints, users: deletions });
 });
@@ -124,7 +126,7 @@ async function reportCounts(ids: Types.ObjectId[]) {
   return new Map(rows.map((r) => [String(r._id), r.n]));
 }
 
-adminRouter.get('/users', ADMINS, LQ, async (_req, res) => {
+adminRouter.get('/users', P('users'), LQ, async (_req, res) => {
   const q = res.locals.query as ListQ;
   const filter: AnyFilter = { status: q.status ?? { $ne: 'deleted' }, ...range(q) };
   if (q.role) filter.roles = q.role;
@@ -138,7 +140,7 @@ adminRouter.get('/users', ADMINS, LQ, async (_req, res) => {
   ok(res, paged(items, q.cursor, q.limit, total));
 });
 
-adminRouter.get('/users/:id', ADMINS, idParam, async (_req, res) => {
+adminRouter.get('/users/:id', P('users'), idParam, async (_req, res) => {
   const id = (res.locals.params as { id: string }).id;
   const [u, wp, sub, complaintsAgainst, complaintsBy, convs, payments] = await Promise.all([
     User.findById(id).lean(), WorkerProfile.findOne({ user: id }).lean(), Subscription.findOne({ user: id }).lean(),
@@ -161,7 +163,7 @@ adminRouter.get('/users/:id', ADMINS, idParam, async (_req, res) => {
 });
 
 const userPatch = z.object({ status: z.enum(['active', 'suspended', 'deleted']), reason: reasonBody.optional() });
-adminRouter.patch('/users/:id', ADMINS, idParam, validate({ body: userPatch }), async (req, res) => {
+adminRouter.patch('/users/:id', P('users'), idParam, validate({ body: userPatch }), async (req, res) => {
   const id = (res.locals.params as { id: string }).id;
   const b = res.locals.body as z.infer<typeof userPatch>;
   if (b.status !== 'active' && !b.reason) throw HttpError.badRequest('A reason is required');
@@ -178,7 +180,7 @@ adminRouter.patch('/users/:id', ADMINS, idParam, validate({ body: userPatch }), 
     const sent = await Message.find({ sender: id, image: { $exists: true, $ne: null } }, { image: 1 }).lean();
     sent.forEach((m) => removePublic(m.image));
     await Message.updateMany({ sender: id }, { $set: { text: '', moderation: 'removed' }, $unset: { image: 1 } });
-    Object.assign(u, { name: 'Deleted user', email: undefined, avatar: '', mobile: `deleted_${id}`, status: 'deleted', statusReason: b.reason, roles: ['customer'] });
+    Object.assign(u, { name: 'Deleted user', email: undefined, avatar: '', mobile: `deleted_${id}`, status: 'deleted', statusReason: b.reason, roles: ['customer'], addresses: [] });
   } else {
     u.status = b.status;
     u.statusReason = b.reason;
@@ -192,7 +194,7 @@ adminRouter.patch('/users/:id', ADMINS, idParam, validate({ body: userPatch }), 
 });
 
 const workerPatch = z.object({ restricted: z.boolean(), reason: reasonBody });
-adminRouter.patch('/workers/:id', ADMINS, idParam, validate({ body: workerPatch }), async (req, res) => {
+adminRouter.patch('/workers/:id', P('users'), idParam, validate({ body: workerPatch }), async (req, res) => {
   const id = (res.locals.params as { id: string }).id;
   const b = res.locals.body as z.infer<typeof workerPatch>;
   const wp = await WorkerProfile.findOneAndUpdate({ user: id }, { restricted: b.restricted }, { returnDocument: 'after' }).lean();
@@ -205,7 +207,7 @@ adminRouter.patch('/workers/:id', ADMINS, idParam, validate({ body: workerPatch 
 // ======================================================================
 // Worker verification
 // ======================================================================
-adminRouter.get('/verifications', ADMINS, LQ, async (_req, res) => {
+adminRouter.get('/verifications', P('verifications'), LQ, async (_req, res) => {
   const q = res.locals.query as ListQ;
   const filter: AnyFilter = { ...(q.status && { status: q.status }), ...range(q) };
   const [rows, total] = await Promise.all([Verification.find(filter).sort({ createdAt: -1 }).skip(q.cursor).limit(q.limit).lean(), Verification.countDocuments(filter)]);
@@ -226,7 +228,7 @@ adminRouter.get('/verifications', ADMINS, LQ, async (_req, res) => {
 });
 
 /** Streams a private document. Every view is audit-logged (SRS 11). */
-adminRouter.get('/verifications/:id/documents/:idx', ADMINS, validate({ params: z.object({ id: oid, idx: z.coerce.number().int().min(0).max(9) }) }), async (req, res) => {
+adminRouter.get('/verifications/:id/documents/:idx', P('verifications'), validate({ params: z.object({ id: oid, idx: z.coerce.number().int().min(0).max(9) }) }), async (req, res) => {
   const { id, idx } = res.locals.params as { id: string; idx: number };
   const v = await Verification.findById(id).lean();
   const doc = v?.documents[idx];
@@ -237,7 +239,7 @@ adminRouter.get('/verifications/:id/documents/:idx', ADMINS, validate({ params: 
 });
 
 const verPatch = z.object({ status: z.enum(['approved', 'rejected', 'info_requested']), reason: z.string().trim().max(500).optional() });
-adminRouter.patch('/verifications/:id', ADMINS, idParam, validate({ body: verPatch }), async (req, res) => {
+adminRouter.patch('/verifications/:id', P('verifications'), idParam, validate({ body: verPatch }), async (req, res) => {
   const id = (res.locals.params as { id: string }).id;
   const b = res.locals.body as z.infer<typeof verPatch>;
   if (b.status !== 'approved' && (!b.reason || b.reason.length < 3)) throw HttpError.badRequest('A reason is required');
@@ -259,7 +261,7 @@ adminRouter.patch('/verifications/:id', ADMINS, idParam, validate({ body: verPat
 // ======================================================================
 // Categories
 // ======================================================================
-adminRouter.get('/categories', ADMINS, async (_req, res) => ok(res, await categoriesWithCounts({})));
+adminRouter.get('/categories', P('categories'), async (_req, res) => ok(res, await categoriesWithCounts({})));
 
 const catBody = z.object({
   name: z.string().trim().min(2).max(40), nameHi: z.string().trim().max(40).default(''), icon: z.string().max(30).default('briefcase'),
@@ -267,7 +269,7 @@ const catBody = z.object({
 });
 // PATCH schemas must not carry .default()s — otherwise omitted fields get reset (zod applies defaults inside .partial()).
 const catPatch = z.object({ name: z.string().trim().min(2).max(40), nameHi: z.string().trim().max(40), icon: z.string().max(30), tint: z.string().max(20), skills: z.array(z.string().trim().min(1).max(40)).max(30), active: z.boolean() }).partial();
-adminRouter.post('/categories', ADMINS, validate({ body: catBody }), async (req, res) => {
+adminRouter.post('/categories', P('categories'), validate({ body: catBody }), async (req, res) => {
   const b = res.locals.body as z.infer<typeof catBody>;
   const id = b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   if (await Category.exists({ _id: id })) throw new HttpError(409, 'EXISTS', 'Category already exists');
@@ -275,7 +277,7 @@ adminRouter.post('/categories', ADMINS, validate({ body: catBody }), async (req,
   void audit(req, 'category.create', { type: 'category', id, label: b.name });
   ok(res, { id: c._id, ...b, workerCount: 0 }, 201);
 });
-adminRouter.patch('/categories/:id', ADMINS, validate({ params: z.object({ id: z.string().max(40) }), body: catPatch }), async (req, res) => {
+adminRouter.patch('/categories/:id', P('categories'), validate({ params: z.object({ id: z.string().max(40) }), body: catPatch }), async (req, res) => {
   const id = (res.locals.params as { id: string }).id;
   const c = await Category.findByIdAndUpdate(id, { $set: res.locals.body }, { returnDocument: 'after' }).lean();
   if (!c) throw HttpError.notFound();
@@ -286,7 +288,7 @@ adminRouter.patch('/categories/:id', ADMINS, validate({ params: z.object({ id: z
 // ======================================================================
 // Plans, subscriptions, transactions
 // ======================================================================
-adminRouter.get('/plans', ADMINS, async (_req, res) => ok(res, (await Plan.find().sort({ sort: 1 }).lean()).map(planDto)));
+adminRouter.get('/plans', P('billing'), async (_req, res) => ok(res, (await Plan.find().sort({ sort: 1 }).lean()).map(planDto)));
 
 const planBody = z.object({
   name: z.string().trim().min(2).max(40), price: z.number().min(0).max(100000), period: z.enum(['month', 'year']),
@@ -300,7 +302,7 @@ adminRouter.post('/plans', SUPER, validate({ body: planBody }), async (req, res)
   void audit(req, 'plan.create', { type: 'plan', id, label: b.name });
   ok(res, planDto(p.toObject()), 201);
 });
-adminRouter.patch('/plans/:id', ADMINS, validate({ params: z.object({ id: z.string().max(40) }), body: planBody.partial() }), async (req, res) => {
+adminRouter.patch('/plans/:id', P('billing'), validate({ params: z.object({ id: z.string().max(40) }), body: planBody.partial() }), async (req, res) => {
   const id = (res.locals.params as { id: string }).id;
   const p = await Plan.findByIdAndUpdate(id, { $set: res.locals.body }, { returnDocument: 'after' }).lean();
   if (!p) throw HttpError.notFound();
@@ -308,7 +310,7 @@ adminRouter.patch('/plans/:id', ADMINS, validate({ params: z.object({ id: z.stri
   ok(res, planDto(p));
 });
 
-adminRouter.get('/subscriptions', ADMINS, LQ, async (_req, res) => {
+adminRouter.get('/subscriptions', P('billing'), LQ, async (_req, res) => {
   const q = res.locals.query as ListQ;
   const filter: AnyFilter = { status: q.status ?? 'active' };
   const [rows, total] = await Promise.all([Subscription.find(filter).sort({ endAt: 1 }).skip(q.cursor).limit(q.limit).populate<{ user: { name: string; mobile: string } }>('user', 'name mobile').lean(), Subscription.countDocuments(filter)]);
@@ -325,7 +327,7 @@ adminRouter.post('/subscriptions/grant', SUPER, validate({ body: grantBody }), a
   ok(res, { endAt: endAt.toISOString() });
 });
 
-adminRouter.get('/transactions', ADMINS, LQ, async (_req, res) => {
+adminRouter.get('/transactions', P('billing'), LQ, async (_req, res) => {
   const q = res.locals.query as ListQ;
   const filter: AnyFilter = { ...(q.status && { status: q.status }), ...range(q), ...(q.q && { orderId: new RegExp(escapeRegex(q.q), 'i') }) };
   const [rows, total] = await Promise.all([Payment.find(filter).sort({ createdAt: -1 }).skip(q.cursor).limit(q.limit).populate<{ user: { name: string; mobile: string } }>('user', 'name mobile').lean(), Payment.countDocuments(filter)]);
@@ -376,7 +378,7 @@ async function complaintDtos(rows: ComplaintLean[]) {
 }
 const loadComplaints = (filter: AnyFilter, skip: number, limit: number) => Complaint.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
 
-adminRouter.get('/complaints', ANY, LQ, async (req, res) => {
+adminRouter.get('/complaints', P('complaints'), LQ, async (req, res) => {
   const q = res.locals.query as ListQ;
   const filter: AnyFilter = { ...complaintScope(req), ...(q.status && { status: q.status }), ...range(q), ...(q.q && { $or: [{ code: new RegExp(escapeRegex(q.q), 'i') }, { description: new RegExp(escapeRegex(q.q), 'i') }] }) };
   const [rows, total] = await Promise.all([loadComplaints(filter, q.cursor, q.limit), Complaint.countDocuments(filter)]);
@@ -390,12 +392,14 @@ const complaintPatch = z.object({
   note: z.string().trim().max(1000).optional(),
   action: z.enum(['warn', 'restrict', 'suspend']).optional(), // against the reported user
 });
-adminRouter.patch('/complaints/:id', ANY, validate({ params: z.object({ id: z.string().max(20) }), body: complaintPatch }), async (req, res) => {
+adminRouter.patch('/complaints/:id', P('complaints'), validate({ params: z.object({ id: z.string().max(20) }), body: complaintPatch }), async (req, res) => {
   const code = (res.locals.params as { id: string }).id;
   const b = res.locals.body as z.infer<typeof complaintPatch>;
   const c = await Complaint.findOne({ code, ...complaintScope(req) });
   if (!c) throw HttpError.notFound('Complaint not found');
   if (req.admin!.role === 'support' && (b.assignedTo !== undefined || b.action === 'suspend')) throw HttpError.forbidden('Support staff cannot reassign or suspend');
+  // Suspending / restricting an account is a Users-module power — a sub-admin needs that permission too.
+  if ((b.action === 'suspend' || b.action === 'restrict') && !can(req.admin!, 'users', 'edit')) throw HttpError.forbidden('You need Users → Edit permission to restrict or suspend');
   if (b.action && !c.targetUser) throw HttpError.badRequest('This complaint is not linked to a user');
   if (b.status === 'resolved' && !(b.resolution || c.resolution)) throw HttpError.badRequest('Add a resolution note before resolving');
   const by = `${req.admin!.name} (${req.admin!.role.replace('_', ' ')})`;
@@ -418,7 +422,7 @@ adminRouter.patch('/complaints/:id', ANY, validate({ params: z.object({ id: z.st
   ok(res, (await complaintDtos([c.toObject()]))[0]);
 });
 
-adminRouter.get('/complaints/:id/evidence/:idx', ANY, validate({ params: z.object({ id: z.string().max(20), idx: z.coerce.number().int().min(0).max(5) }) }), async (req, res) => {
+adminRouter.get('/complaints/:id/evidence/:idx', P('complaints'), validate({ params: z.object({ id: z.string().max(20), idx: z.coerce.number().int().min(0).max(5) }) }), async (req, res) => {
   const { id, idx } = res.locals.params as { id: string; idx: number };
   const c = await Complaint.findOne({ code: id, ...complaintScope(req) }).lean();
   const rel = c?.evidence[idx];
@@ -431,7 +435,7 @@ adminRouter.get('/complaints/:id/evidence/:idx', ANY, validate({ params: z.objec
 // ======================================================================
 // Review moderation
 // ======================================================================
-adminRouter.get('/reviews', ADMINS, LQ, async (_req, res) => {
+adminRouter.get('/reviews', P('reviews'), LQ, async (_req, res) => {
   const q = res.locals.query as ListQ;
   const filter: AnyFilter = { ...(q.status === 'reported' ? { reports: { $gt: 0 } } : q.status ? { status: q.status } : {}) };
   const [rows, total] = await Promise.all([
@@ -445,7 +449,7 @@ adminRouter.get('/reviews', ADMINS, LQ, async (_req, res) => {
   })), q.cursor, q.limit, total));
 });
 
-adminRouter.patch('/reviews/:id', ADMINS, idParam, validate({ body: z.object({ status: z.enum(['visible', 'hidden']), reason: z.string().trim().max(500).optional() }) }), async (req, res) => {
+adminRouter.patch('/reviews/:id', P('reviews'), idParam, validate({ body: z.object({ status: z.enum(['visible', 'hidden']), reason: z.string().trim().max(500).optional() }) }), async (req, res) => {
   const id = (res.locals.params as { id: string }).id;
   const b = res.locals.body as { status: 'visible' | 'hidden'; reason?: string };
   if (b.status === 'hidden' && (!b.reason || b.reason.length < 3)) throw HttpError.badRequest('A reason is required');
@@ -466,19 +470,19 @@ const bannerLink = z.string().trim().max(120).regex(/^(\/(?!\/)|https:\/\/)/, 'L
 const bannerBody = z.object({ title: z.string().trim().min(2).max(60), subtitle: z.string().trim().max(120).default(''), tint: z.string().max(80).default('from-indigo-600 to-violet-500'), link: z.union([bannerLink, z.literal('')]).optional(), active: z.boolean().default(true), sort: z.number().int().default(0) });
 const bannerPatch = z.object({ title: z.string().trim().min(2).max(60), subtitle: z.string().trim().max(120), tint: z.string().max(80), link: z.union([bannerLink, z.literal('')]), active: z.boolean(), sort: z.number().int() }).partial();
 
-adminRouter.get('/banners', ADMINS, async (_req, res) => ok(res, (await Banner.find().sort({ sort: 1 }).lean()).map(bannerDto)));
-adminRouter.post('/banners', ADMINS, validate({ body: bannerBody }), async (req, res) => {
+adminRouter.get('/banners', P('cms'), async (_req, res) => ok(res, (await Banner.find().sort({ sort: 1 }).lean()).map(bannerDto)));
+adminRouter.post('/banners', P('cms'), validate({ body: bannerBody }), async (req, res) => {
   const b = await Banner.create(res.locals.body);
   void audit(req, 'banner.create', { type: 'banner', id: String(b._id), label: b.title });
   ok(res, bannerDto(b.toObject()), 201);
 });
-adminRouter.patch('/banners/:id', ADMINS, idParam, validate({ body: bannerPatch }), async (req, res) => {
+adminRouter.patch('/banners/:id', P('cms'), idParam, validate({ body: bannerPatch }), async (req, res) => {
   const b = await Banner.findByIdAndUpdate((res.locals.params as { id: string }).id, { $set: res.locals.body }, { returnDocument: 'after' }).lean();
   if (!b) throw HttpError.notFound();
   void audit(req, 'banner.update', { type: 'banner', id: String(b._id), label: b.title });
   ok(res, bannerDto(b));
 });
-adminRouter.delete('/banners/:id', ADMINS, idParam, async (req, res) => {
+adminRouter.delete('/banners/:id', P('cms'), idParam, async (req, res) => {
   const b = await Banner.findByIdAndDelete((res.locals.params as { id: string }).id).lean();
   if (b) void audit(req, 'banner.delete', { type: 'banner', id: String(b._id), label: b.title });
   res.status(204).end();
@@ -487,33 +491,33 @@ adminRouter.delete('/banners/:id', ADMINS, idParam, async (req, res) => {
 const faqDto = (f: { _id: unknown; q: string; a: string; active: boolean; sort: number }) => ({ id: String(f._id), q: f.q, a: f.a, active: f.active, sort: f.sort });
 const faqBody = z.object({ q: z.string().trim().min(5).max(200), a: z.string().trim().min(5).max(1500), active: z.boolean().default(true), sort: z.number().int().default(0) });
 const faqPatch = z.object({ q: z.string().trim().min(5).max(200), a: z.string().trim().min(5).max(1500), active: z.boolean(), sort: z.number().int() }).partial();
-adminRouter.get('/faqs', ADMINS, async (_req, res) => ok(res, (await Faq.find().sort({ sort: 1 }).lean()).map(faqDto)));
-adminRouter.post('/faqs', ADMINS, validate({ body: faqBody }), async (req, res) => {
+adminRouter.get('/faqs', P('cms'), async (_req, res) => ok(res, (await Faq.find().sort({ sort: 1 }).lean()).map(faqDto)));
+adminRouter.post('/faqs', P('cms'), validate({ body: faqBody }), async (req, res) => {
   const f = await Faq.create(res.locals.body);
   void audit(req, 'faq.create', { type: 'faq', id: String(f._id), label: f.q });
   ok(res, faqDto(f.toObject()), 201);
 });
-adminRouter.patch('/faqs/:id', ADMINS, idParam, validate({ body: faqPatch }), async (req, res) => {
+adminRouter.patch('/faqs/:id', P('cms'), idParam, validate({ body: faqPatch }), async (req, res) => {
   const f = await Faq.findByIdAndUpdate((res.locals.params as { id: string }).id, { $set: res.locals.body }, { returnDocument: 'after' }).lean();
   if (!f) throw HttpError.notFound();
   void audit(req, 'faq.update', { type: 'faq', id: String(f._id), label: f.q });
   ok(res, faqDto(f));
 });
-adminRouter.delete('/faqs/:id', ADMINS, idParam, async (req, res) => {
+adminRouter.delete('/faqs/:id', P('cms'), idParam, async (req, res) => {
   const f = await Faq.findByIdAndDelete((res.locals.params as { id: string }).id).lean();
   if (f) void audit(req, 'faq.delete', { type: 'faq', id: String(f._id), label: f.q });
   res.status(204).end();
 });
 
-adminRouter.get('/pages', ADMINS, async (_req, res) => ok(res, (await Page.find().lean()).map((p) => ({ slug: p._id, title: p.title, body: p.body, updatedAt: iso(p.updatedAt as Date) }))));
-adminRouter.put('/pages/:slug', ADMINS, validate({ params: z.object({ slug: z.enum(['terms', 'privacy', 'refund', 'safety']) }), body: z.object({ title: z.string().trim().min(2).max(80), body: z.array(z.string().trim().min(1).max(2000)).min(1).max(50) }) }), async (req, res) => {
+adminRouter.get('/pages', P('cms'), async (_req, res) => ok(res, (await Page.find().lean()).map((p) => ({ slug: p._id, title: p.title, body: p.body, updatedAt: iso(p.updatedAt as Date) }))));
+adminRouter.put('/pages/:slug', P('cms'), validate({ params: z.object({ slug: z.enum(['terms', 'privacy', 'refund', 'safety']) }), body: z.object({ title: z.string().trim().min(2).max(80), body: z.array(z.string().trim().min(1).max(2000)).min(1).max(50) }) }), async (req, res) => {
   const slug = (res.locals.params as { slug: string }).slug;
   const p = await Page.findByIdAndUpdate(slug, { $set: res.locals.body }, { upsert: true, returnDocument: 'after' }).lean();
   void audit(req, 'page.update', { type: 'page', id: slug, label: p!.title });
   ok(res, { slug, title: p!.title, body: p!.body, updatedAt: iso(p!.updatedAt as Date) });
 });
 
-adminRouter.post('/uploads/banner', ADMINS, upload.banner, async (req, res) => {
+adminRouter.post('/uploads/banner', P('cms'), upload.banner, async (req, res) => {
   if (!req.file) throw HttpError.badRequest('Choose an image');
   ok(res, { url: publicUrl(req.file) }, 201);
 });
@@ -521,7 +525,7 @@ adminRouter.post('/uploads/banner', ADMINS, upload.banner, async (req, res) => {
 // ======================================================================
 // Customization Settings (feature toggles + maintenance)
 // ======================================================================
-adminRouter.get('/settings', ADMINS, async (_req, res) => {
+adminRouter.get('/settings', P('settings'), async (_req, res) => {
   const s = await getSettings();
   ok(res, { ...publicSettings(s), subscriptionRequiredFor: s.subscriptionRequiredFor, featureKeys: FEATURE_KEYS, updatedAt: iso(s.updatedAt as Date) });
 });
@@ -532,11 +536,11 @@ const settingsBody = z.object({
   subscriptionRequiredFor: z.array(z.enum(['customer', 'worker'])).max(2).optional(),
   radiusOptions: z.array(z.union([z.literal(5), z.literal(10), z.literal(15)])).min(1).max(3).optional(),
   defaultRadiusKm: z.union([z.literal(5), z.literal(10), z.literal(15)]).optional(),
-  supportEmail: z.email().optional(),
+  supportEmail: z.union([z.email(), z.literal('')]).optional(),
   supportPhone: z.string().trim().max(20).optional(),
   appVersion: z.string().trim().max(20).optional(),
 });
-adminRouter.patch('/settings', ADMINS, validate({ body: settingsBody }), async (req, res) => {
+adminRouter.patch('/settings', P('settings'), validate({ body: settingsBody }), async (req, res) => {
   const b = res.locals.body as z.infer<typeof settingsBody>;
   if (b.maintenance?.enabled !== undefined && req.admin!.role !== 'super_admin') throw HttpError.forbidden('Only the super admin can toggle maintenance mode');
   // Dotted $set so a partial toggle never wipes sibling keys.
@@ -564,26 +568,41 @@ adminRouter.get('/audit-logs', SUPER, LQ, async (_req, res) => {
   ok(res, paged(rows.map((l) => ({ id: String(l._id), actor: l.actorName ?? 'system', action: l.action, target: l.target ?? '', reason: l.reason, ip: l.ip, at: iso(l.at as Date)! })), q.cursor, q.limit, total));
 });
 
-const staffDto = (a: { _id: unknown; name: string; email: string; role: string; status: string; mfaSecret?: string | null; lastLoginAt?: Date | null }) =>
-  ({ id: String(a._id), name: a.name, email: a.email, role: a.role, status: a.status, mfa: !!a.mfaSecret, lastLoginAt: iso(a.lastLoginAt) });
+const staffDto = (a: { _id: unknown; name: string; email: string; role: string; status: string; mfaSecret?: string | null; lastLoginAt?: Date | null; permissions?: unknown }) =>
+  ({ id: String(a._id), name: a.name, email: a.email, role: a.role, status: a.status, mfa: !!a.mfaSecret, lastLoginAt: iso(a.lastLoginAt), permissions: normalizePermissions(a.permissions) });
+
+/** Module list for the sub-admin permission matrix (labels match the sidebar). */
+adminRouter.get('/staff/permission-modules', SUPER, (_req, res) => ok(res, { modules: ADMIN_MODULES.map((key) => ({ key, label: MODULE_LABEL[key] })), actions: PERM_ACTIONS }));
 adminRouter.get('/staff', ANY, async (req, res) => {
   // Support/admin need the list for complaint assignment; only super admin sees disabled accounts.
   const rows = await Admin.find(req.admin!.role === 'super_admin' ? {} : { status: 'active' }).sort({ createdAt: 1 }).lean();
   ok(res, rows.map(staffDto));
 });
-const staffBody = z.object({ name: z.string().trim().min(2).max(60), email: z.email(), password: z.string().min(8).max(100), role: z.enum(['super_admin', 'admin', 'support']) });
+const staffRole = z.enum(['super_admin', 'admin', 'support', 'sub_admin']);
+const permsBody = z.record(z.enum(ADMIN_MODULES), z.record(z.enum(PERM_ACTIONS), z.boolean())).optional();
+const staffBody = z.object({ name: personName, email: z.email(), password: z.string().min(8).max(100), role: staffRole, permissions: permsBody });
+const hasAnyPerm = (p: ReturnType<typeof normalizePermissions>) => Object.keys(p).length > 0;
 adminRouter.post('/staff', SUPER, validate({ body: staffBody }), async (req, res) => {
   const b = res.locals.body as z.infer<typeof staffBody>;
   if (await Admin.exists({ email: b.email.toLowerCase() })) throw new HttpError(409, 'EXISTS', 'Email already registered');
-  const a = await Admin.create({ name: b.name, email: b.email, role: b.role, passwordHash: await hashPassword(b.password) });
+  const permissions = b.role === 'sub_admin' ? normalizePermissions(b.permissions) : {};
+  if (b.role === 'sub_admin' && !hasAnyPerm(permissions)) throw HttpError.badRequest('Give the sub-admin at least one permission');
+  const a = await Admin.create({ name: b.name, email: b.email, role: b.role, permissions, passwordHash: await hashPassword(b.password) });
   void audit(req, 'staff.create', { type: 'admin', id: String(a._id), label: `${a.name} (${a.role})` });
   ok(res, staffDto(a.toObject()), 201);
 });
-adminRouter.patch('/staff/:id', SUPER, idParam, validate({ body: z.object({ role: z.enum(['super_admin', 'admin', 'support']).optional(), status: z.enum(['active', 'disabled']).optional(), resetMfa: z.boolean().optional() }) }), async (req, res) => {
+const staffPatch = z.object({ role: staffRole.optional(), status: z.enum(['active', 'disabled']).optional(), resetMfa: z.boolean().optional(), permissions: permsBody });
+adminRouter.patch('/staff/:id', SUPER, idParam, validate({ body: staffPatch }), async (req, res) => {
   const id = (res.locals.params as { id: string }).id;
   if (id === req.admin!.sub) throw HttpError.badRequest('You cannot change your own role or status');
-  const b = res.locals.body as { role?: string; status?: string; resetMfa?: boolean };
-  const a = await Admin.findByIdAndUpdate(id, { $set: { ...(b.role && { role: b.role }), ...(b.status && { status: b.status }) }, ...(b.resetMfa && { $unset: { mfaSecret: 1 } }) }, { returnDocument: 'after' }).lean();
+  const b = res.locals.body as z.infer<typeof staffPatch>;
+  const cur = await Admin.findById(id, { role: 1, permissions: 1 }).lean();
+  if (!cur) throw HttpError.notFound();
+  const role = b.role ?? cur.role;
+  // Permissions only exist for sub-admins; switching to another role clears them.
+  const permissions = role === 'sub_admin' ? normalizePermissions(b.permissions ?? cur.permissions) : {};
+  if (role === 'sub_admin' && !hasAnyPerm(permissions)) throw HttpError.badRequest('Give the sub-admin at least one permission');
+  const a = await Admin.findByIdAndUpdate(id, { $set: { role, permissions, ...(b.status && { status: b.status }) }, ...(b.resetMfa && { $unset: { mfaSecret: 1 } }) }, { returnDocument: 'after' }).lean();
   if (!a) throw HttpError.notFound();
   void audit(req, 'staff.update', { type: 'admin', id, label: a.name }, undefined, b);
   ok(res, staffDto(a));
@@ -599,8 +618,11 @@ const csv = (rows: Record<string, unknown>[]) => {
   const cell = (v: unknown) => { let s = v == null ? '' : String(v); if (/^[=+\-@]/.test(s)) s = `'${s}`; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   return [cols.join(','), ...rows.map((r) => cols.map((c) => cell(r[c])).join(','))].join('\n');
 };
-adminRouter.get('/export/:type', ADMINS, validate({ params: z.object({ type: z.enum(['users', 'transactions', 'complaints']) }), query: listQuery }), async (req, res) => {
+const EXPORT_MODULE: Record<string, AdminModule> = { users: 'users', transactions: 'billing', complaints: 'complaints' };
+adminRouter.get('/export/:type', ANY, validate({ params: z.object({ type: z.enum(['users', 'transactions', 'complaints']) }), query: listQuery }), async (req, res) => {
   const { type } = res.locals.params as { type: string };
+  // Exports are bulk data: never support staff; sub-admins only for modules they can view.
+  if (req.admin!.role === 'support' || !can(req.admin!, EXPORT_MODULE[type]!, 'view')) throw HttpError.forbidden('You do not have permission to export this data');
   const q = res.locals.query as ListQ;
   let rows: Record<string, unknown>[] = [];
   if (type === 'users') {
