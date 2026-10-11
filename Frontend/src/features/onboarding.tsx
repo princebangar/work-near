@@ -11,13 +11,14 @@ import {
 import { useAuth, useFeature, useGeo, usePrefs, toast } from '@/store';
 import { useObjectUrl, useRadius } from '@/hooks/useAppSettings';
 import { useT, type TKey } from '@/i18n';
-import { cn, date, getDeviceLocation } from '@/lib/format';
+import { cn, date, getDeviceLocation, GpsError } from '@/lib/format';
+import { cleanName, nameError } from '@/lib/validate';
 import { mapsEnabled, reverseGeocode } from '@/lib/maps';
 import type { MyWorkerProfile, VerificationType } from '@/types';
 
 const LANGS = ['Hindi', 'English', 'Punjabi', 'Urdu', 'Bengali', 'Marathi', 'Gujarati', 'Tamil', 'Telugu', 'Kannada', 'Malayalam', 'Odia'];
+// Quick-pick suggestions only — nothing is pre-filled; the worker chooses or types their own.
 const HOURS = ['Mon – Sat, 9:00 AM – 7:00 PM', 'All days, 8:00 AM – 8:00 PM', 'Weekends only', '24 × 7'];
-const DEFAULT_HOURS = HOURS[0];
 
 type StepKey = 'basic' | 'skills' | 'area' | 'details' | 'verify';
 const STEP_TITLE: Record<StepKey, TKey> = { basic: 'stepBasic', skills: 'stepSkills', area: 'stepArea', details: 'stepDetails', verify: 'stepVerify' };
@@ -67,13 +68,14 @@ function OnboardingForm({ existing }: { existing: MyWorkerProfile | null }) {
     experience: existing ? String(existing.experienceYrs) : '',
     categoryId: existing?.categoryId ?? '',
     skills: existing?.skills ?? ([] as string[]),
-    languages: existing?.languages?.length ? existing.languages : ['Hindi'],
+    languages: existing?.languages ?? ([] as string[]),
     radius: existing?.serviceRadiusKm ?? options[0] ?? 5,
     locality: existing?.locality ?? '',
-    lat: existing?.lat ?? point.lat,
-    lng: existing?.lng ?? point.lng,
-    placeLabel: existing ? existing.locality : point.label,
-    hours: existing?.hours || DEFAULT_HOURS,
+    // Work location must be set explicitly (GPS or map) — never silently taken from a default.
+    lat: existing?.lat ?? point?.lat ?? null as number | null,
+    lng: existing?.lng ?? point?.lng ?? null as number | null,
+    placeLabel: existing ? existing.locality : point?.label ?? '',
+    hours: existing?.hours ?? '',
     priceMin: price0.min,
     priceMax: price0.max,
     showPhone: existing?.showPhone ?? false,
@@ -104,12 +106,30 @@ function OnboardingForm({ existing }: { existing: MyWorkerProfile | null }) {
   }
 
   const exp = Number(f.experience);
-  const valid: Record<StepKey, boolean> = {
-    basic: f.name.trim().length >= 2 && f.experience !== '' && exp >= 0 && exp <= 60 && f.bio.length <= 1000,
-    skills: !!f.categoryId && f.skills.length >= 1 && f.skills.length <= 15,
-    area: f.locality.trim().length >= 2 && Number.isFinite(f.lat) && Number.isFinite(f.lng),
-    details: f.hours.length <= 80 && formatPrice(f.priceMin, f.priceMax).length <= 40 && f.languages.length <= 8,
-    verify: true,
+  const priceMin = Number(f.priceMin || 0), priceMax = Number(f.priceMax || 0);
+  /** Field errors for one step (same rules as the server) — shown when the user taps Next. */
+  const check = (k: StepKey): Record<string, string> => {
+    const e: Record<string, string> = {};
+    if (k === 'basic') {
+      const n = nameError(f.name);
+      if (n) e.name = t(n);
+      if (f.experience === '') e.experience = t('expRequired');
+      else if (exp > 60) e.experience = t('max60');
+    }
+    if (k === 'skills') {
+      if (!f.categoryId) e.categoryId = t('catRequired');
+      else if (!f.skills.length) e.skills = t('skillRequired');
+    }
+    if (k === 'area') {
+      if (f.locality.trim().length < 2) e.locality = t('localityRequired');
+      if (f.lat === null || f.lng === null) e.lat = t('locationRequired');
+    }
+    if (k === 'details') {
+      if (f.hours.trim().length < 3) e.hours = t('hoursRequired');
+      if (!f.languages.length) e.languages = t('langRequired');
+      if (f.priceMin && f.priceMax && priceMin > priceMax) e.priceRange = t('priceMinMax');
+    }
+    return e;
   };
   const lastFormStep = steps.indexOf('details');
 
@@ -131,14 +151,18 @@ function OnboardingForm({ existing }: { existing: MyWorkerProfile | null }) {
       const p = await getDeviceLocation();
       const label = mapsEnabled ? await reverseGeocode(p.lat, p.lng).catch(() => '') : '';
       setF((x) => ({ ...x, lat: p.lat, lng: p.lng, placeLabel: label || t('currentLocation'), locality: x.locality || label }));
+      setErrors(({ lat: _l, ...rest }) => rest);
       toast(t('locationSet'));
-    } catch {
-      toast(t('locationDenied'), 'error');
+    } catch (e) {
+      toast(t(e instanceof GpsError ? (`gps_${e.reason}` as TKey) : 'gps_unavailable'), 'error');
     } finally {
       setGpsBusy(false);
     }
   };
-  const onPick = (p: PickedPlace) => setF((x) => ({ ...x, lat: p.lat, lng: p.lng, placeLabel: p.label, locality: x.locality || p.label }));
+  const onPick = (p: PickedPlace) => {
+    setF((x) => ({ ...x, lat: p.lat, lng: p.lng, placeLabel: p.label, locality: x.locality || p.label }));
+    setErrors(({ lat: _l, ...rest }) => rest);
+  };
 
   const finish = () => {
     toast(t('workerProfileLive'));
@@ -149,9 +173,9 @@ function OnboardingForm({ existing }: { existing: MyWorkerProfile | null }) {
     setErrors({});
     save.mutate(
       {
-        name: f.name.trim(), bio: f.bio.trim(), experience: exp, categoryId: f.categoryId, skills: f.skills, languages: f.languages,
-        radius: f.radius, locality: f.locality.trim(), hours: f.hours.trim() || undefined, priceRange: formatPrice(f.priceMin, f.priceMax),
-        lat: f.lat, lng: f.lng, ...(phoneSharingOn && { showPhone: f.showPhone }),
+        name: cleanName(f.name), bio: f.bio.trim(), experience: exp, categoryId: f.categoryId, skills: f.skills, languages: f.languages,
+        radius: f.radius, locality: f.locality.trim(), hours: f.hours.trim(), priceRange: formatPrice(f.priceMin, f.priceMax),
+        lat: f.lat!, lng: f.lng!, ...(phoneSharingOn && { showPhone: f.showPhone }),
       },
       {
         onSuccess: async () => {
@@ -174,6 +198,9 @@ function OnboardingForm({ existing }: { existing: MyWorkerProfile | null }) {
   };
 
   const next = () => {
+    const e = check(key);
+    if (Object.keys(e).length) return setErrors(e);
+    setErrors({});
     if (step < lastFormStep) return setStep(step + 1);
     if (step === lastFormStep) return submitProfile();
   };
@@ -235,7 +262,7 @@ function OnboardingForm({ existing }: { existing: MyWorkerProfile | null }) {
             <Card className="p-3">
               <div className="flex items-center gap-2">
                 <MapPin size={18} className="shrink-0 text-primary" />
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold">{f.placeLabel || `${f.lat.toFixed(4)}, ${f.lng.toFixed(4)}`}</span>
+                <span className={cn('min-w-0 flex-1 truncate text-sm font-semibold', f.lat === null && 'text-ink-3')}>{f.lat === null ? t('setLocation') : f.placeLabel || `${f.lat.toFixed(4)}, ${f.lng!.toFixed(4)}`}</span>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <Button variant="soft" size="sm" loading={gpsBusy} onClick={useGps}><Crosshair size={16} />{t('currentLocation')}</Button>
@@ -248,7 +275,7 @@ function OnboardingForm({ existing }: { existing: MyWorkerProfile | null }) {
           <p className="text-sm font-medium text-ink-2">{t('serviceRadius')}</p>
           <div className="flex gap-2">{options.map((r) => <Chip key={r} active={f.radius === r} onClick={() => set('radius', r)}>{r} KM</Chip>)}</div>
           <LocationSheet open={mapOpen} onClose={() => setMapOpen(false)} onPick={onPick} circleKm={f.radius} title={t('pickOnMap')}
-            initial={{ lat: f.lat, lng: f.lng, label: f.placeLabel || f.locality, source: 'manual' }} />
+            initial={f.lat !== null && f.lng !== null ? { lat: f.lat, lng: f.lng, label: f.placeLabel || f.locality, source: 'manual' } : undefined} />
         </>}
 
         {key === 'details' && <>
@@ -288,7 +315,7 @@ function OnboardingForm({ existing }: { existing: MyWorkerProfile | null }) {
       {key !== 'verify' ? (
         <div className="pb-safe sticky bottom-0 flex gap-2 border-t border-line bg-surface p-3 dark:shadow-[0_-10px_28px_-14px_rgba(0,0,0,0.9)]">
           {step > 0 && <Button variant="outline" size="lg" onClick={() => setStep(step - 1)}>{t('back')}</Button>}
-          <Button size="lg" block disabled={!valid[key]} loading={busy} onClick={next}>
+          <Button size="lg" block loading={busy} onClick={next}>
             {step < lastFormStep ? t('next') : edit ? t('saveChanges') : t('saveProfile')}
           </Button>
         </div>

@@ -25,15 +25,17 @@ export function Help() {
     <div className="min-h-dvh">
       <TopBar title={t('helpSupport')} />
       <div className="space-y-5 p-4">
-        <div className={cn('grid gap-3', complaintsOn ? 'grid-cols-2' : 'grid-cols-1')}>
+        <div className={cn('grid gap-3', complaintsOn && support.email ? 'grid-cols-2' : 'grid-cols-1')}>
           {complaintsOn && (
             <Card onClick={() => nav('/help/complaint')} className="p-4">
               <MessageSquareWarning className="mb-2 text-primary" /><b className="text-sm">{t('raiseComplaint')}</b>
             </Card>
           )}
-          <a href={`mailto:${support.email}`} className="block rounded-card border border-line/70 bg-surface p-4 active:scale-[.99]">
-            <Mail className="mb-2 text-primary" /><b className="block text-sm">{t('contactUs')}</b><span className="block truncate text-xs text-ink-2">{support.email}</span>
-          </a>
+          {support.email && (
+            <a href={`mailto:${support.email}`} className="block rounded-card border border-line/70 bg-surface p-4 active:scale-[.99]">
+              <Mail className="mb-2 text-primary" /><b className="block text-sm">{t('contactUs')}</b><span className="block truncate text-xs text-ink-2">{support.email}</span>
+            </a>
+          )}
         </div>
         {support.phone && (
           <a href={`tel:${support.phone.replace(/\s/g, '')}`} className="flex items-center gap-3 rounded-card border border-line/70 bg-surface p-4">
@@ -78,7 +80,7 @@ export function Help() {
             </Card>
           )}
         </section>
-        <p className="text-center text-xs text-ink-3">{t('urgentNote')} {support.email}</p>
+        {support.email && <p className="text-center text-xs text-ink-3">{t('urgentNote')} {support.email}</p>}
       </div>
     </div>
   );

@@ -39,7 +39,8 @@ export const useAuth = create<AuthState>()(
 
 export interface GeoPoint { lat: number; lng: number; label: string; source: 'gps' | 'manual' }
 interface GeoState {
-  point: GeoPoint;
+  /** null until the user picks a location (GPS, map, search or saved address) — no hard-coded default city. */
+  point: GeoPoint | null;
   radiusKm: number;
   asked: boolean;
   setAsked: () => void;
@@ -49,14 +50,24 @@ interface GeoState {
 export const useGeo = create<GeoState>()(
   persist(
     (set) => ({
-      point: { lat: 28.6139, lng: 77.209, label: 'Connaught Place, New Delhi', source: 'manual' },
+      point: null,
       radiusKm: APP.defaultRadiusKm,
       asked: false,
       setAsked: () => set({ asked: true }),
       setPoint: (point) => set({ point }),
       setRadius: (radiusKm) => set({ radiusKm }),
     }),
-    { name: 'wn-geo', storage },
+    {
+      name: 'wn-geo',
+      storage,
+      version: 1,
+      // v0 stored a hard-coded default city for everyone — drop it so the user is asked for their real location.
+      migrate: (s) => {
+        const st = s as GeoState;
+        if (st?.point?.label === 'Connaught Place, New Delhi' && st.point.source === 'manual') st.point = null;
+        return st;
+      },
+    },
   ),
 );
 

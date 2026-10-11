@@ -30,10 +30,10 @@ export function SearchPage() {
   const [sheet, setSheet] = useState<'filter' | 'sort' | 'loc' | null>(null);
 
   const params = useMemo(
-    () => ({ lat: point.lat, lng: point.lng, radiusKm, q: q || undefined, categoryId, sort, ...filters }),
-    [point.lat, point.lng, radiusKm, q, categoryId, sort, filters],
+    () => ({ lat: point?.lat ?? 0, lng: point?.lng ?? 0, radiusKm, q: q || undefined, categoryId, sort, ...filters }),
+    [point?.lat, point?.lng, radiusKm, q, categoryId, sort, filters],
   );
-  const res = useWorkerSearch(params);
+  const res = useWorkerSearch(params, !!point); // no search until the user has set a location
   const items = res.data?.pages.flatMap((p) => p.items) ?? [];
   const total = res.data?.pages[0]?.total ?? 0;
   const nextRadius = options.find((r) => r > radiusKm);
@@ -84,7 +84,7 @@ export function SearchPage() {
           </button>
         </div>
         <button onClick={() => setSheet('loc')} className="flex max-w-full items-center gap-1 px-4 pt-2 text-sm text-ink-2">
-          <MapPin size={14} className="shrink-0 text-primary" /><span className="truncate">{point.label}</span>
+          <MapPin size={14} className="shrink-0 text-primary" /><span className="truncate">{point?.label ?? t('setLocation')}</span>
           <span className="shrink-0 font-semibold text-primary">· {radiusKm} KM</span>
         </button>
         <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 py-3">
@@ -95,12 +95,16 @@ export function SearchPage() {
       </div>
 
       <div className="flex items-center justify-between px-4 pt-3 pb-2">
-        <span className="text-sm text-ink-2">{res.isLoading ? '…' : <><b className="text-ink">{total}</b> {t('results')} · {t('within')} {radiusKm} KM</>}</span>
+        <span className="text-sm text-ink-2">{!point ? null : res.isLoading ? '…' : <><b className="text-ink">{total}</b> {t('results')} · {t('within')} {radiusKm} KM</>}</span>
         <button onClick={() => setSheet('sort')} className="flex items-center gap-1 text-sm font-semibold text-primary"><ArrowUpDown size={15} />{sortLabel[sort]}</button>
       </div>
 
       <div className={cn('space-y-3 px-4 pb-4 transition-opacity', res.isFetching && !res.isFetchingNextPage && !res.isLoading && 'opacity-60')}>
-        {res.isLoading && Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-28" />)}
+        {!point && (
+          <EmptyState icon={<MapPin size={34} />} title={t('setLocation')} sub={t('setLocationSub')}
+            action={<Button onClick={() => setSheet('loc')}>{t('selectLocation')}</Button>} />
+        )}
+        {point && res.isLoading && Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-28" />)}
         {res.isError && !items.length && <ErrorState message={errorMessage(res.error)} onRetry={() => res.refetch()} />}
         {items.map((w) => <WorkerCard key={w.id} w={w} />)}
         {res.isSuccess && items.length === 0 && (

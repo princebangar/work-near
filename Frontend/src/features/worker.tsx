@@ -127,7 +127,7 @@ export function WorkerProfile() {
   const chatOn = useFeature('chat');
   const reviewsOn = useFeature('reviews');
   const reportsOn = useFeature('reports');
-  const { data: w, isLoading, error, refetch } = useWorker(id, point);
+  const { data: w, isLoading, error, refetch } = useWorker(id, point ?? undefined);
   const self = !!w && w.id === me;
   const convs = useConversations();
   const eligibility = useReviewEligibility(id, reviewsOn && !self && !!w);
