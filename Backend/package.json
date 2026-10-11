@@ -13,7 +13,8 @@
     "start": "node --env-file=.env dist/server.js",
     "typecheck": "tsc --noEmit",
     "push:test": "tsx --env-file=.env scripts/push-test.ts",
-    "seed": "tsx --env-file=.env scripts/seed.ts"
+    "seed": "tsx --env-file=.env scripts/seed.ts",
+    "security:check": "tsx --env-file=.env scripts/security-check.ts"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",

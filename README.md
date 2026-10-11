@@ -11,9 +11,11 @@ Hyperlocal service marketplace: customers find workers within 5/10/15 KM, chat d
 ```bash
 cd Backend
 npm install
-npm run seed            # collections, indexes, categories, plans, banners, FAQs, legal pages, settings, super admin
-npm run seed -- --demo  # optional: 24 demo workers around Connaught Place (mobiles 90000xxxxx)
 npm run dev             # http://localhost:5000  (GET /health)
+# On every boot the server builds indexes, default content (categories, plans, legal pages, FAQs, settings)
+# and the first super admin from SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD — no script needed.
+# Optional local helpers live in Backend/scripts/ (gitignored): `npm run seed -- --demo` (24 demo workers),
+# `npm run security:check`, `bash scripts/smoke-test.sh`.
 
 cd ../Frontend
 npm install
@@ -38,4 +40,4 @@ Full API contract: [`Backend/API.md`](Backend/API.md).
 
 ## Deploy notes
 - Frontend (Netlify): set `VITE_API_BASE_URL=https://<api>/api/v1` and `VITE_BACKEND_ORIGIN=https://<api>`.
-- Backend: set `NODE_ENV=production`, `USE_DEFAULT_OTP=false`, SMS India Hub keys, Razorpay keys + webhook secret (`/api/v1/payments/webhook`), `PUBLIC_URL`, and `FRONTEND_URL`/`SOCKET_CORS_ORIGIN` to the site origin. Run `npm run seed` once against the production DB (indexes are not auto-built in production).
+- Backend: set `NODE_ENV=production`, `USE_DEFAULT_OTP=false`, SMS India Hub keys, Razorpay keys + webhook secret (`/api/v1/payments/webhook`), `PUBLIC_URL`, and `FRONTEND_URL`/`SOCKET_CORS_ORIGIN` to the site origin. Indexes and base data are created automatically at boot. Use a strong `SEED_ADMIN_PASSWORD`, change it after first login. Running more than one instance behind a load balancer? Set `REDIS_ENABLED=true` + `REDIS_URL` and `TRUST_PROXY` to the number of proxy hops.
