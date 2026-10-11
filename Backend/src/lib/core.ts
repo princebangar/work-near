@@ -6,7 +6,7 @@ import { env } from '../config/env.js';
 
 export const logger = pino({
   level: env.LOG_LEVEL,
-  redact: ['req.headers.authorization', 'req.body.otp', 'req.body.password'],
+  redact: ['req.headers.authorization', 'req.headers.cookie', 'req.body.otp', 'req.body.password', 'req.body.refreshToken', 'req.body.token'],
   ...(!env.isProd && { transport: { target: 'pino-pretty', options: { colorize: true, singleLine: true } } }),
 });
 
@@ -48,6 +48,9 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   }
   if (err instanceof SyntaxError && 'body' in err) {
     return res.status(400).json({ error: { code: 'INVALID_JSON', message: 'Malformed JSON body' } });
+  }
+  if ((err as { type?: string }).type === 'entity.too.large') {
+    return res.status(413).json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'Request is too large' } });
   }
   req.log?.error({ err }, 'Unhandled error');
   res.status(500).json({ error: { code: 'INTERNAL', message: 'Something went wrong' } });

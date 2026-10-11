@@ -17,7 +17,7 @@ export async function connectDb() {
   await mongoose.connect(env.MONGODB_URI, {
     maxPoolSize: 20,
     serverSelectionTimeoutMS: 10_000,
-    autoIndex: !env.isProd, // build indexes via migrations in production
+    autoIndex: !env.isProd, // production: indexes are built once at boot by ensureBaseData()
   });
   logger.info({ db: mongoose.connection.name }, 'MongoDB connected');
 }
