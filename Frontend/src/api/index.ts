@@ -27,6 +27,7 @@ export const qk = {
   payments: ['subscription', 'payments'] as const,
   complaints: ['complaints', 'me'] as const,
   blocked: ['blocked'] as const,
+  addresses: ['me', 'addresses'] as const,
   admin: (k: string, p?: unknown) => ['admin', k, p] as const,
 };
 
@@ -464,5 +465,28 @@ export function useAdminPatch<R extends { id: string }>(key: string, base: strin
   return useMutation({
     mutationFn: ({ id, ...b }: { id: string } & Record<string, unknown>) => http.patch<R>(`${base}/${id}`, b),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', key] }),
+  });
+}
+
+// ---------- Saved addresses (location picker) ----------
+export const useAddresses = (enabled = true) =>
+  useQuery({ queryKey: qk.addresses, queryFn: () => http.get<T.SavedAddress[]>('/me/addresses'), enabled, ...LIVE });
+
+export function useSaveAddress() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id?: string; body: T.AddressInput }) =>
+      id ? http.patch<T.SavedAddress[]>(`/me/addresses/${id}`, body) : http.post<T.SavedAddress[]>('/me/addresses', body),
+    onSuccess: (list) => qc.setQueryData(qk.addresses, list),
+    onError: (e) => toastError(e),
+  });
+}
+
+export function useDeleteAddress() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => http.del<T.SavedAddress[]>(`/me/addresses/${id}`),
+    onSuccess: (list) => qc.setQueryData(qk.addresses, list),
+    onError: (e) => toastError(e),
   });
 }

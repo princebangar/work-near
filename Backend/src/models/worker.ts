@@ -14,9 +14,9 @@ const workerProfileSchema = new Schema(
     category: { type: String, ref: 'Category', required: true, index: true },
     skills: { type: [String], default: [] },
     experienceYrs: { type: Number, default: 0, min: 0, max: 60 },
-    languages: { type: [String], default: ['Hindi'] },
+    languages: { type: [String], default: [] },
     priceRange: { type: String, default: '', maxlength: 40 },
-    hours: { type: String, default: 'Mon – Sat, 9:00 AM – 7:00 PM', maxlength: 80 },
+    hours: { type: String, default: '', maxlength: 80 },
     serviceRadiusKm: { type: Number, enum: [5, 10, 15], default: 5 },
     locality: { type: String, default: '', maxlength: 120 },
     location: {

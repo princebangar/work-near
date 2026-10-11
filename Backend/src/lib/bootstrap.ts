@@ -2,7 +2,6 @@ import type { Model } from 'mongoose';
 import { env } from '../config/env.js';
 import { logger } from './core.js';
 import { hashPassword } from './password.js';
-import { defaultBanners, defaultCategories, defaultFaqs, defaultPages, defaultPlans } from '../modules/catalog/catalog.data.js';
 import { Block, Otp, User } from '../models/user.js';
 import { Review, Verification, WorkerProfile } from '../models/worker.js';
 import { Conversation, Message } from '../models/chat.js';
@@ -20,21 +19,13 @@ const MODELS: Model<never>[] = [
  * Runs on every server start (idempotent, a few cheap queries) so a fresh production database is usable
  * without running any script:
  *  1. builds missing indexes (production runs with autoIndex off; search needs the 2dsphere index)
- *  2. inserts default categories, plans, legal pages, banners, FAQs and settings only when missing —
- *     admin edits are never overwritten
+ *  2. creates the single settings row (feature switches) if missing
  *  3. creates the first super admin from SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD while no admin exists
+ * No business content is inserted — categories, plans, banners, FAQs and legal pages are all created by admin.
  */
 export async function ensureBaseData() {
   for (const m of MODELS) await m.createIndexes().catch((err) => logger.error({ err, model: m.modelName }, 'Index build failed'));
 
-  const upsertMissing = async (M: Model<never>, rows: { _id: string }[]) => {
-    for (const r of rows) await M.updateOne({ _id: r._id } as never, { $setOnInsert: r } as never, { upsert: true });
-  };
-  await upsertMissing(Category as never, defaultCategories);
-  await upsertMissing(Plan as never, defaultPlans);
-  await upsertMissing(Page as never, defaultPages);
-  if (!(await Banner.exists({}))) await Banner.insertMany(defaultBanners);
-  if (!(await Faq.exists({}))) await Faq.insertMany(defaultFaqs);
   await Setting.updateOne({ _id: 'app' }, { $setOnInsert: { _id: 'app' } }, { upsert: true });
 
   if (!(await Admin.exists({}))) {

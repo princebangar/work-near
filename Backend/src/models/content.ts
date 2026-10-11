@@ -89,7 +89,7 @@ const settingSchema = new Schema(
     subscriptionRequiredFor: { type: [String], enum: ['customer', 'worker'], default: [] },
     radiusOptions: { type: [Number], default: [5, 10, 15] },
     defaultRadiusKm: { type: Number, enum: [5, 10, 15], default: 5 },
-    supportEmail: { type: String, default: 'support@worknear.in' },
+    supportEmail: { type: String, default: '' }, // set by admin → Customization Settings
     supportPhone: { type: String, default: '' },
     appVersion: { type: String, default: '1.0.0' },
   },

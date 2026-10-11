@@ -4,12 +4,13 @@ import { env } from '../config/env.js';
 import { HttpError } from '../lib/core.js';
 import { User } from '../models/user.js';
 import { Admin } from '../models/ops.js';
+import { actionFor, can, normalizePermissions, type AdminModule, type Permissions } from '../lib/permissions.js';
 
 export type Role = 'customer' | 'worker';
-export type AdminRole = 'super_admin' | 'admin' | 'support';
+export type AdminRole = 'super_admin' | 'admin' | 'support' | 'sub_admin';
 /** App-user token. `typ` keeps user and admin tokens from being interchangeable. */
 export interface AuthUser { sub: string; roles: Role[]; typ?: 'user'; tv?: number }
-export interface AuthAdmin { sub: string; role: AdminRole; name: string; typ: 'admin' }
+export interface AuthAdmin { sub: string; role: AdminRole; name: string; typ: 'admin'; permissions?: Permissions }
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -31,8 +32,8 @@ export const signTokens = (u: { sub: string; roles: Role[]; tv?: number }) => ({
   accessToken: jwt.sign({ sub: u.sub, roles: u.roles, tv: u.tv ?? 0, typ: 'user' }, env.JWT_ACCESS_SECRET, { ...SIGN, expiresIn: env.JWT_ACCESS_EXPIRES as Expiry }),
   refreshToken: jwt.sign({ sub: u.sub, tv: u.tv ?? 0, typ: 'refresh' }, env.JWT_REFRESH_SECRET, { ...SIGN, expiresIn: env.JWT_REFRESH_EXPIRES as Expiry }),
 });
-export const signAdmin = (a: Omit<AuthAdmin, 'typ'>) =>
-  jwt.sign({ ...a, typ: 'admin' }, env.JWT_ACCESS_SECRET, { ...SIGN, expiresIn: '12h' }); // admin sessions expire sooner (SRS 11)
+export const signAdmin = (a: Omit<AuthAdmin, 'typ' | 'permissions'>) =>
+  jwt.sign({ sub: a.sub, role: a.role, name: a.name, typ: 'admin' }, env.JWT_ACCESS_SECRET, { ...SIGN, expiresIn: '12h' }); // admin sessions expire sooner (SRS 11)
 
 export const verifyRefresh = (token: string) => {
   const p = jwt.verify(token, env.JWT_REFRESH_SECRET, VERIFY) as { sub: string; tv?: number; typ?: string };
@@ -97,9 +98,24 @@ export const requireAdmin = (...roles: AdminRole[]): RequestHandler => async (re
   } catch {
     return next(HttpError.unauthorized('Admin session expired'));
   }
-  const a = await Admin.findById(p.sub, { status: 1, role: 1, name: 1 }).lean();
+  // Role + permissions are re-read on every request, so changes by the super admin apply immediately.
+  const a = await Admin.findById(p.sub, { status: 1, role: 1, name: 1, permissions: 1 }).lean();
   if (!a || a.status !== 'active') return next(HttpError.unauthorized('Admin account disabled'));
-  req.admin = { sub: p.sub, role: a.role as AdminRole, name: a.name, typ: 'admin' };
+  req.admin = { sub: p.sub, role: a.role as AdminRole, name: a.name, typ: 'admin', permissions: normalizePermissions(a.permissions) };
   if (roles.length && !roles.includes(a.role as AdminRole)) return next(HttpError.forbidden('Your role cannot perform this action'));
   next();
+};
+
+/**
+ * Module guard for admin routes: action comes from the HTTP method (GET view, POST create, PATCH/PUT edit, DELETE delete).
+ * super_admin/admin pass, support passes for complaints, sub_admin needs the ticked permission.
+ */
+export const requirePerm = (module: AdminModule): RequestHandler => {
+  const auth = requireAdmin();
+  return (req, res, next) =>
+    auth(req, res, (err?: unknown) => {
+      if (err) return next(err);
+      if (!can(req.admin!, module, actionFor(req.method))) return next(HttpError.forbidden('You do not have permission for this action'));
+      next();
+    });
 };

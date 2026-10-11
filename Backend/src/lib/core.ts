@@ -56,6 +56,20 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   res.status(500).json({ error: { code: 'INTERNAL', message: 'Something went wrong' } });
 }
 
+/**
+ * Person / display name: letters in any script (Hindi too), spaces and . ' - only; 2–80 chars, at least 2 letters.
+ * Blocks numbers-only, emoji and symbol spam names. Same rule as Frontend lib/validate.ts.
+ */
+export const NAME_RE = /^[\p{L}\p{M}][\p{L}\p{M} .'-]*$/u;
+export const personName = z
+  .string()
+  .trim()
+  .transform((s) => s.replace(/\s+/g, ' '))
+  .pipe(
+    z.string().min(2, 'Name must be at least 2 characters').max(80).regex(NAME_RE, 'Use letters only (no numbers or symbols)')
+      .refine((s) => (s.match(/\p{L}/gu) ?? []).length >= 2, 'Name must have at least 2 letters'),
+  );
+
 /** Escapes user text before using it inside a RegExp (prevents ReDoS / regex injection). */
 export const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 

@@ -6,7 +6,9 @@ const adminSchema = new Schema(
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true },
-    role: { type: String, enum: ['super_admin', 'admin', 'support'], default: 'support' },
+    role: { type: String, enum: ['super_admin', 'admin', 'support', 'sub_admin'], default: 'support' },
+    // sub_admin only: { [module]: { view, create, edit, delete } } — see lib/permissions.ts
+    permissions: { type: Schema.Types.Mixed, default: {} },
     status: { type: String, enum: ['active', 'disabled'], default: 'active' },
     mfaSecret: String, // base32 TOTP secret; when set, login requires an authenticator code
     lastLoginAt: Date,

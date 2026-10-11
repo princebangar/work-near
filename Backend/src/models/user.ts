@@ -27,6 +27,18 @@ const userSchema = new Schema(
     lastLoginAt: Date,
     lastActiveAt: { type: Date, default: Date.now },
     tokenVersion: { type: Number, default: 0 }, // bump to revoke every issued token (suspend / delete)
+    // Saved search locations (Home / Work / Other). Private to the user — never shown to workers or other users.
+    addresses: {
+      type: [{
+        label: { type: String, enum: ['home', 'work', 'other'], default: 'other' },
+        name: { type: String, trim: true, maxlength: 40, default: '' }, // custom label for 'other'
+        line: { type: String, trim: true, maxlength: 120, default: '' }, // house / flat / landmark
+        address: { type: String, trim: true, maxlength: 200, required: true }, // from the map pin
+        lat: { type: Number, required: true },
+        lng: { type: Number, required: true },
+      }],
+      default: [],
+    },
   },
   { timestamps: true, versionKey: false },
 );
