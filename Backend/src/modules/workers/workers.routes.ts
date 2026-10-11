@@ -4,7 +4,7 @@ import { HttpError, ok, validate } from '../../lib/core.js';
 import { optionalAuth, requireAuth } from '../../middlewares/auth.js';
 import { requireFeature } from '../../middlewares/features.js';
 import { privateRel, publicUrl, removeFile, removePublic, upload } from '../../lib/upload.js';
-import { ipKey, limiter, userKey } from '../../lib/limits.js';
+import { ipKey, limiter, uploadLimiter } from '../../lib/limits.js';
 import { env } from '../../config/env.js';
 import { notify } from '../../lib/notify.js';
 import { Category, getSettings } from '../../models/content.js';
@@ -16,9 +16,8 @@ import { completion, searchNearby, workerDetail } from './workers.service.js';
 
 export const workersRouter = Router();
 
-// SRS 11: rate-limit search and uploads. Search is public, so it is keyed by IP (stops scraping the worker directory).
+// SRS 11: rate-limit search. It is public, so it is keyed by IP (stops scraping the worker directory).
 const searchLimiter = limiter({ name: 'search', windowMs: 60_000, limit: env.SEARCH_RATE_LIMIT, key: ipKey, message: 'Too many searches. Please wait a minute.' });
-export const uploadLimiter = limiter({ name: 'upload', windowMs: 60 * 60_000, limit: env.UPLOAD_RATE_LIMIT, key: userKey, message: 'Too many uploads. Please try again later.' });
 
 const bool = z.enum(['true', 'false']).transform((v) => v === 'true').optional();
 const lat = z.coerce.number().min(-90).max(90);

@@ -1,12 +1,11 @@
 import type { Types } from 'mongoose';
 import { Router, type Request } from 'express';
-import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
-import { env } from '../../config/env.js';
 import { HttpError, ok, toId, validate } from '../../lib/core.js';
 import { requireAuth } from '../../middlewares/auth.js';
 import { requireFeature } from '../../middlewares/features.js';
 import { publicUrl, removeFile, upload } from '../../lib/upload.js';
+import { limiter, uploadLimiter } from '../../lib/limits.js';
 import { emitTo } from '../../lib/socket.js';
 import { pushToUser } from '../../lib/notify.js';
 import { Block } from '../../models/user.js';
@@ -14,7 +13,7 @@ import { WorkerProfile } from '../../models/worker.js';
 import { Conversation, Message } from '../../models/chat.js';
 import { Subscription } from '../../models/billing.js';
 import { getSettings } from '../../models/content.js';
-import { conversationDto, messageDto, sideOf } from './chat.service.js';
+import { conversationDto, conversationDtos, messageDto, sideOf } from './chat.service.js';
 
 export const chatRouter = Router();
 chatRouter.use(requireAuth);
@@ -23,11 +22,9 @@ const oid = z.string().regex(/^[a-f\d]{24}$/, 'Invalid id');
 const idParam = validate({ params: z.object({ id: oid }) });
 
 // Anti-spam: per-user message rate (SRS 5.4).
-const messageLimiter = rateLimit({
-  windowMs: 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false,
-  keyGenerator: (req) => (req as Request).user!.sub, skip: () => !env.RATE_LIMIT_ENABLED,
-  message: { error: { code: 'RATE_LIMITED', message: 'You are sending messages too fast. Please slow down.' } },
-});
+const messageLimiter = limiter({ name: 'message', windowMs: 60_000, limit: 30, key: (req) => req.user!.sub, message: 'You are sending messages too fast. Please slow down.' });
+// New threads per user per hour — stops one account from cold-messaging every worker in the city.
+const newChatLimiter = limiter({ name: 'new-chat', windowMs: 60 * 60_000, limit: 30, key: (req) => req.user!.sub, message: 'You have started many chats recently. Please try again later.' });
 
 async function mine(req: Request, id: string) {
   const c = await Conversation.findById(id).lean();
@@ -38,10 +35,10 @@ async function mine(req: Request, id: string) {
 chatRouter.get('/conversations', async (req, res) => {
   const me = req.user!.sub;
   const rows = await Conversation.find({ $or: [{ customer: me }, { worker: me }] }).sort({ lastMessageAt: -1 }).limit(200).lean();
-  ok(res, await Promise.all(rows.map((c) => conversationDto(c, me))));
+  ok(res, await conversationDtos(rows, me));
 });
 
-chatRouter.post('/conversations', requireFeature('chat'), validate({ body: z.object({ workerId: oid }) }), async (req, res) => {
+chatRouter.post('/conversations', requireFeature('chat'), newChatLimiter, validate({ body: z.object({ workerId: oid }) }), async (req, res) => {
   const me = req.user!.sub;
   const { workerId } = res.locals.body as { workerId: string };
   if (workerId === me) throw HttpError.badRequest('You cannot chat with yourself');
@@ -125,14 +122,18 @@ async function send(req: Request, convId: string, payload: { text: string; image
     { returnDocument: 'after' },
   ).lean();
   const dto = messageDto(m);
-  // Realtime fan-out: peer gets message + their view of the thread; my other devices get the message too.
-  void conversationDto(updated!, peer).then((conv) => emitTo(peer, 'message:new', { message: dto, conversation: conv }));
-  emitTo(me, 'message:new', { message: dto });
+  emitTo(me, 'message:new', { message: dto }); // my other devices
+  // Peer gets the message + their view of the thread. That view is built once and also gives the push title
+  // (its `peer` is me, as the peer sees me). Runs off the request path.
   const peerState = peerSide === 'customer' ? updated!.customerState : updated!.workerState;
-  if (!peerState?.muted) {
-    const who = (await conversationDto(updated!, peer)).peer.name;
-    void pushToUser(peer, { type: 'chat', title: `New message from ${who}`, body: payload.image ? '📷 Photo' : payload.text.slice(0, 120), link: `/chats/${convId}` });
-  }
+  void conversationDto(updated!, peer)
+    .then((conv) => {
+      emitTo(peer, 'message:new', { message: dto, conversation: conv });
+      if (!peerState?.muted) {
+        void pushToUser(peer, { type: 'chat', title: `New message from ${conv.peer.name}`, body: payload.image ? '📷 Photo' : payload.text.slice(0, 120), link: `/chats/${convId}` });
+      }
+    })
+    .catch((err) => req.log.warn({ err }, 'chat fan-out failed'));
   return dto;
 }
 
@@ -140,7 +141,7 @@ chatRouter.post('/conversations/:id/messages', requireFeature('chat'), messageLi
   ok(res, await send(req, (res.locals.params as { id: string }).id, { text: (res.locals.body as { text: string }).text }), 201);
 });
 
-chatRouter.post('/conversations/:id/images', requireFeature('chat'), requireFeature('chatAttachments'), messageLimiter, idParam, upload.chatImage, async (req, res) => {
+chatRouter.post('/conversations/:id/images', requireFeature('chat'), requireFeature('chatAttachments'), messageLimiter, uploadLimiter, idParam, upload.chatImage, async (req, res) => {
   if (!req.file) throw HttpError.badRequest('Choose an image');
   const { features } = await getSettings();
   if (features?.chatAttachments === false) {

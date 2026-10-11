@@ -11,6 +11,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <title>WorkNear</title>
+    <!-- Apply saved theme before first paint (no light flash in dark mode). -->
+    <script>try{var m=JSON.parse(localStorage.getItem('wn-theme')||'{}').state?.mode||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=m;document.documentElement.style.colorScheme=m;}catch(e){}</script>
     <!-- Skeleton styles live in <head> so the React route fallback can reuse the exact same look. -->
     <style>
       .bs{min-height:100dvh;background:#e9ebf3}.bs-f{max-width:480px;margin:0 auto;min-height:100dvh;background:#f5f6fa}
@@ -19,6 +21,8 @@
       .bs-p{padding:20px 16px;display:grid;gap:16px}.bs-g{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
       @keyframes bsh{from{background-position:150% 0}to{background-position:-50% 0}}
       @media(min-width:640px) and (pointer:fine){.bs-f{zoom:.85;min-height:calc(100dvh / .85)}}
+      [data-theme=dark] .bs{background:#05060a}[data-theme=dark] .bs-f{background:#0b0d14}
+      [data-theme=dark] .bs-k{background-image:linear-gradient(90deg,#1b1f2d 25%,#242a3b 45%,#1b1f2d 65%)}
     </style>
 
   </head>

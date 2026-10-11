@@ -112,15 +112,17 @@ export function startSubscriptionJobs() {
     // (A late Razorpay webhook can still settle a 'failed' order, see settle().)
     await Payment.updateMany({ status: 'pending', createdAt: { $lt: new Date(now.getTime() - 30 * 60_000) } }, { status: 'failed', failureReason: 'Checkout abandoned' });
     const soon = new Date(now.getTime() + 3 * 86_400_000);
-    const expiring = await Subscription.find({ status: 'active', endAt: { $gt: now, $lte: soon }, reminderSentAt: null }).lean();
+    // Each row is *claimed* with a conditional update before notifying, so when several API instances run this
+    // job at the same time (load balancer), every user still gets exactly one reminder / expiry notice.
+    const expiring = await Subscription.find({ status: 'active', endAt: { $gt: now, $lte: soon }, reminderSentAt: null }, { _id: 1, user: 1 }).lean();
     for (const s of expiring) {
-      await Subscription.updateOne({ _id: s._id }, { reminderSentAt: now });
-      void notify(s.user, { type: 'subscription', title: 'Subscription expiring soon', body: 'Your plan expires in less than 3 days. Renew to keep all benefits.', link: '/subscription' });
+      const claimed = await Subscription.updateOne({ _id: s._id, reminderSentAt: null }, { reminderSentAt: now });
+      if (claimed.modifiedCount) void notify(s.user, { type: 'subscription', title: 'Subscription expiring soon', body: 'Your plan expires in less than 3 days. Renew to keep all benefits.', link: '/subscription' });
     }
-    const lapsed = await Subscription.find({ status: 'active', endAt: { $lte: now } }, { user: 1 }).lean();
-    if (lapsed.length) {
-      await Subscription.updateMany({ _id: { $in: lapsed.map((s) => s._id) } }, { status: 'expired' });
-      for (const s of lapsed) void notify(s.user, { type: 'subscription', title: 'Subscription expired', body: 'Renew anytime from Account → Subscription.', link: '/subscription' });
+    const lapsed = await Subscription.find({ status: 'active', endAt: { $lte: now } }, { _id: 1, user: 1 }).lean();
+    for (const s of lapsed) {
+      const claimed = await Subscription.updateOne({ _id: s._id, status: 'active', endAt: { $lte: now } }, { status: 'expired' }); // not if renewed meanwhile
+      if (claimed.modifiedCount) void notify(s.user, { type: 'subscription', title: 'Subscription expired', body: 'Renew anytime from Account → Subscription.', link: '/subscription' });
     }
   };
   const tick = () => run().catch((err) => logger.error({ err }, 'subscription job failed'));

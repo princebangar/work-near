@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { HttpError, ok, validate } from '../../lib/core.js';
 import { requireAuth } from '../../middlewares/auth.js';
 import { publicUrl, removePublic, upload } from '../../lib/upload.js';
-import { uploadLimiter } from '../workers/workers.routes.js';
+import { uploadLimiter } from '../../lib/limits.js';
 import { Block, User } from '../../models/user.js';
 import { WorkerProfile } from '../../models/worker.js';
 import { PushToken } from '../../models/PushToken.js';

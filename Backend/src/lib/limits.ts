@@ -34,3 +34,6 @@ export function limiter({ name, windowMs, limit, key, message = 'Too many reques
 export const ipKey = (req: Request) => ipKeyGenerator(req.ip ?? '');
 /** Signed-in user id (falls back to IP for anonymous requests). */
 export const userKey = (req: Request) => req.user?.sub ?? ipKey(req);
+
+/** Shared by every multipart endpoint (avatars, portfolio, chat images, verification docs, evidence). */
+export const uploadLimiter = limiter({ name: 'upload', windowMs: 60 * 60_000, limit: env.UPLOAD_RATE_LIMIT, key: userKey, message: 'Too many uploads. Please try again later.' });
