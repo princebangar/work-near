@@ -3,7 +3,10 @@ import { z } from 'zod';
 import { HttpError, ok, toId, validate } from '../../lib/core.js';
 import { requireAuth } from '../../middlewares/auth.js';
 import { requireFeature } from '../../middlewares/features.js';
-import { privateRel, upload } from '../../lib/upload.js';
+import { privateRel, removeFile, upload } from '../../lib/upload.js';
+import { limiter, userKey } from '../../lib/limits.js';
+import { env } from '../../config/env.js';
+import { uploadLimiter } from '../workers/workers.routes.js';
 import { notify } from '../../lib/notify.js';
 import { Conversation } from '../../models/chat.js';
 import { Review } from '../../models/worker.js';
@@ -13,6 +16,9 @@ import { sideOf } from '../chat/chat.service.js';
 
 export const safetyRouter = Router();
 safetyRouter.use(requireAuth);
+
+// Reports and complaints notify staff — cap them per user so one account can't flood the admin queue.
+const reportLimiter = limiter({ name: 'report', windowMs: 60 * 60_000, limit: env.REPORT_RATE_LIMIT, key: userKey, message: 'You have sent many reports recently. Please try again later.' });
 
 const oid = z.string().regex(/^[a-f\d]{24}$/, 'Invalid id');
 
@@ -84,7 +90,7 @@ const reportBody = z.object({
   targetType: z.enum(['profile', 'message', 'review']), targetId: z.string().max(40),
   reason: z.string().trim().min(2).max(60), details: z.string().trim().max(1000).optional(),
 });
-safetyRouter.post('/reports', requireFeature('reports'), validate({ body: reportBody }), async (req, res) => {
+safetyRouter.post('/reports', requireFeature('reports'), reportLimiter, validate({ body: reportBody }), async (req, res) => {
   const b = res.locals.body as z.infer<typeof reportBody>;
   const c = await createComplaint(req.user!.sub, { category: b.reason, description: b.details || b.reason, targetType: b.targetType, targetId: b.targetId });
   ok(res, { id: c.code }, 201);
@@ -100,8 +106,15 @@ const complaintBody = z.object({
   targetType: z.enum(['profile', 'message', 'review', 'fraud', 'other']).default('other'), targetId: z.string().max(40).optional(),
 });
 // Accepts JSON, or multipart with up to 3 evidence files.
-safetyRouter.post('/complaints', requireFeature('complaints'), upload.evidence, validate({ body: complaintBody }), async (req, res) => {
+safetyRouter.post('/complaints', requireFeature('complaints'), reportLimiter, uploadLimiter, upload.evidence, async (req, res) => {
   const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+  // Validated after multer (multipart fields only exist then); drop the uploaded evidence if the form is invalid.
+  const parsed = complaintBody.safeParse(req.body);
+  if (!parsed.success) {
+    files.forEach((f) => removeFile(f.path));
+    throw HttpError.badRequest('Validation failed', 'VALIDATION_ERROR', z.flattenError(parsed.error).fieldErrors);
+  }
+  res.locals.body = parsed.data;
   const c = await createComplaint(req.user!.sub, { ...(res.locals.body as z.infer<typeof complaintBody>), evidence: files.map(privateRel) });
   ok(res, complaintDto(c.toObject()), 201);
 });

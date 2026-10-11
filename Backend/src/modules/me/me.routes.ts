@@ -3,8 +3,10 @@ import { z } from 'zod';
 import { HttpError, ok, validate } from '../../lib/core.js';
 import { requireAuth } from '../../middlewares/auth.js';
 import { publicUrl, removePublic, upload } from '../../lib/upload.js';
+import { uploadLimiter } from '../workers/workers.routes.js';
 import { Block, User } from '../../models/user.js';
 import { WorkerProfile } from '../../models/worker.js';
+import { PushToken } from '../../models/PushToken.js';
 import { getSettings } from '../../models/content.js';
 import { userDto } from './me.service.js';
 import { peerFor } from '../chat/chat.service.js';
@@ -43,7 +45,7 @@ meRouter.patch('/me', validate({ body: patchBody }), async (req, res) => {
   ok(res, await userDto(String(u._id)));
 });
 
-meRouter.post('/me/avatar', upload.avatar, async (req, res) => {
+meRouter.post('/me/avatar', uploadLimiter, upload.avatar, async (req, res) => {
   if (!req.file) throw HttpError.badRequest('Choose a photo');
   const u = await User.findById(req.user!.sub);
   if (!u) throw HttpError.notFound();
@@ -56,6 +58,7 @@ meRouter.post('/me/avatar', upload.avatar, async (req, res) => {
 // Deletion is processed by admin within 30 days; logging back in cancels the request.
 meRouter.post('/me/delete-request', async (req, res) => {
   await User.updateOne({ _id: req.user!.sub }, { status: 'deleted_request', deletionRequestedAt: new Date() });
+  await PushToken.deleteMany({ userId: req.user!.sub }); // no more pushes to this account's devices
   await WorkerProfile.updateOne({ user: req.user!.sub }, { visible: false });
   ok(res, { requested: true });
 });

@@ -1,23 +1,27 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
-import { rateLimit } from 'express-rate-limit';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { HttpError, ok, validate } from '../../lib/core.js';
 import { requireAdmin, signAdmin, type AdminRole } from '../../middlewares/auth.js';
 import { generateSecret, otpauthUrl, verifyTotp } from '../../lib/totp.js';
+import { ipKey, limiter } from '../../lib/limits.js';
+import { hashPassword, verifyPassword } from '../../lib/password.js';
 import { audit } from '../../lib/audit.js';
 import { Admin } from '../../models/ops.js';
 
 export const adminAuthRouter = Router();
 
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, skip: () => !env.RATE_LIMIT_ENABLED,
-  message: { error: { code: 'RATE_LIMITED', message: 'Too many login attempts. Try again in 15 minutes.' } },
+// Two layers: per IP (one machine hammering) and per email (one account attacked from many IPs).
+const LOCKED = 'Too many login attempts. Try again in 15 minutes.';
+const loginLimiter = limiter({ name: 'admin-ip', windowMs: 15 * 60_000, limit: 20, key: ipKey, message: LOCKED });
+const accountLimiter = limiter({
+  name: 'admin-email', windowMs: 15 * 60_000, limit: env.ADMIN_LOGIN_RATE_LIMIT, message: LOCKED,
+  key: (req) => String(req.body?.email ?? '').trim().toLowerCase().slice(0, 120) || ipKey(req),
 });
 
 const password = z.string().min(8, 'Password must be at least 8 characters').max(100);
-export const hashPassword = (p: string) => bcrypt.hash(p, 12);
+const sameSecret = (a: string, b: string) => timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest());
 
 const session = (a: { _id: unknown; name: string; email: string; role: string; mfaSecret?: string | null }) => ({
   token: signAdmin({ sub: String(a._id), role: a.role as AdminRole, name: a.name }),
@@ -30,10 +34,10 @@ const loginBody = z.object({ email: z.email(), password: z.string().min(1).max(1
  *  - admin has an authenticator secret → 6-digit TOTP required
  *  - no secret yet → allowed in, the panel nags to set it up (dev also accepts DEFAULT_OTP)
  */
-adminAuthRouter.post('/login', loginLimiter, validate({ body: loginBody }), async (req, res) => {
+adminAuthRouter.post('/login', loginLimiter, accountLimiter, validate({ body: loginBody }), async (req, res) => {
   const b = res.locals.body as z.infer<typeof loginBody>;
   const a = await Admin.findOne({ email: b.email.toLowerCase() });
-  const pwOk = !!a && (await bcrypt.compare(b.password, a.passwordHash));
+  const pwOk = await verifyPassword(b.password, a?.passwordHash); // same cost whether or not the email exists
   if (!a || !pwOk || a.status !== 'active') {
     if (a) await Admin.updateOne({ _id: a._id }, { $push: { loginHistory: { $each: [{ at: new Date(), ip: req.ip, ok: false }], $slice: -20 } } });
     throw new HttpError(401, 'BAD_CREDENTIALS', 'Invalid email or password');
@@ -51,14 +55,17 @@ adminAuthRouter.post('/login', loginLimiter, validate({ body: loginBody }), asyn
   ok(res, session(a));
 });
 
-/** One-time bootstrap / extra admins with the registration code from .env. First account becomes super admin. */
-const registerBody = z.object({ code: z.string().min(4), name: z.string().trim().min(2).max(60), email: z.email(), password });
+/**
+ * One-time bootstrap only: creates the first super admin with the registration code from .env while no admin
+ * exists. After that every staff account is created by the super admin (Staff page), so this endpoint is closed —
+ * a leaked code can no longer mint admin accounts.
+ */
+const registerBody = z.object({ code: z.string().min(4).max(200), name: z.string().trim().min(2).max(60), email: z.email(), password });
 adminAuthRouter.post('/register', loginLimiter, validate({ body: registerBody }), async (_req, res) => {
   const b = res.locals.body as z.infer<typeof registerBody>;
-  if (!env.ADMIN_REGISTRATION_CODE || b.code !== env.ADMIN_REGISTRATION_CODE) throw HttpError.forbidden('Invalid registration code');
-  if (await Admin.exists({ email: b.email.toLowerCase() })) throw new HttpError(409, 'EXISTS', 'Email already registered');
-  const first = !(await Admin.exists({}));
-  const a = await Admin.create({ name: b.name, email: b.email, passwordHash: await hashPassword(b.password), role: first ? 'super_admin' : 'admin' });
+  if (!env.ADMIN_REGISTRATION_CODE || !sameSecret(b.code, env.ADMIN_REGISTRATION_CODE)) throw HttpError.forbidden('Invalid registration code');
+  if (await Admin.exists({})) throw HttpError.forbidden('Registration is closed. Ask the super admin to create your account.');
+  const a = await Admin.create({ name: b.name, email: b.email, passwordHash: await hashPassword(b.password), role: 'super_admin' });
   ok(res, session(a), 201);
 });
 
@@ -89,7 +96,7 @@ adminAuthRouter.post('/me/mfa/enable', requireAdmin(), validate({ body: z.object
 adminAuthRouter.post('/me/password', requireAdmin(), validate({ body: z.object({ current: z.string().min(1), next: password }) }), async (req, res) => {
   const b = res.locals.body as { current: string; next: string };
   const a = await Admin.findById(req.admin!.sub);
-  if (!a || !(await bcrypt.compare(b.current, a.passwordHash))) throw HttpError.badRequest('Current password is wrong');
+  if (!a || !(await verifyPassword(b.current, a.passwordHash))) throw HttpError.badRequest('Current password is wrong');
   a.passwordHash = await hashPassword(b.next);
   await a.save();
   void audit(req, 'admin.password_change', { type: 'admin', id: req.admin!.sub });

@@ -8,7 +8,7 @@ import { Admin } from '../models/ops.js';
 export type Role = 'customer' | 'worker';
 export type AdminRole = 'super_admin' | 'admin' | 'support';
 /** App-user token. `typ` keeps user and admin tokens from being interchangeable. */
-export interface AuthUser { sub: string; roles: Role[]; typ?: 'user' }
+export interface AuthUser { sub: string; roles: Role[]; typ?: 'user'; tv?: number }
 export interface AuthAdmin { sub: string; role: AdminRole; name: string; typ: 'admin' }
 
 declare global {
@@ -19,18 +19,29 @@ declare global {
 }
 
 type Expiry = jwt.SignOptions['expiresIn'];
+// Only HS256 is ever accepted — blocks alg-confusion / "alg: none" tokens.
+const SIGN = { algorithm: 'HS256' } as const;
+const VERIFY = { algorithms: ['HS256'] as jwt.Algorithm[] };
 
-export const signTokens = (u: { sub: string; roles: Role[] }) => ({
-  accessToken: jwt.sign({ ...u, typ: 'user' }, env.JWT_ACCESS_SECRET, { expiresIn: env.JWT_ACCESS_EXPIRES as Expiry }),
-  refreshToken: jwt.sign({ sub: u.sub, typ: 'refresh' }, env.JWT_REFRESH_SECRET, { expiresIn: env.JWT_REFRESH_EXPIRES as Expiry }),
+/**
+ * `tv` = the user's tokenVersion. Suspension, deletion and "log out everywhere" bump it, which instantly
+ * invalidates every access and refresh token issued before (SRS 11: secure token rotation / revocation).
+ */
+export const signTokens = (u: { sub: string; roles: Role[]; tv?: number }) => ({
+  accessToken: jwt.sign({ sub: u.sub, roles: u.roles, tv: u.tv ?? 0, typ: 'user' }, env.JWT_ACCESS_SECRET, { ...SIGN, expiresIn: env.JWT_ACCESS_EXPIRES as Expiry }),
+  refreshToken: jwt.sign({ sub: u.sub, tv: u.tv ?? 0, typ: 'refresh' }, env.JWT_REFRESH_SECRET, { ...SIGN, expiresIn: env.JWT_REFRESH_EXPIRES as Expiry }),
 });
 export const signAdmin = (a: Omit<AuthAdmin, 'typ'>) =>
-  jwt.sign({ ...a, typ: 'admin' }, env.JWT_ACCESS_SECRET, { expiresIn: '12h' }); // admin sessions expire sooner (SRS 11)
+  jwt.sign({ ...a, typ: 'admin' }, env.JWT_ACCESS_SECRET, { ...SIGN, expiresIn: '12h' }); // admin sessions expire sooner (SRS 11)
 
-export const verifyRefresh = (token: string) => jwt.verify(token, env.JWT_REFRESH_SECRET) as { sub: string };
+export const verifyRefresh = (token: string) => {
+  const p = jwt.verify(token, env.JWT_REFRESH_SECRET, VERIFY) as { sub: string; tv?: number; typ?: string };
+  if (p.typ !== 'refresh') throw new Error('wrong token type');
+  return p;
+};
 export const verifyUserToken = (token: string) => {
-  const p = jwt.verify(token, env.JWT_ACCESS_SECRET) as AuthUser & { typ?: string };
-  if (p.typ && p.typ !== 'user') throw new Error('wrong token type');
+  const p = jwt.verify(token, env.JWT_ACCESS_SECRET, VERIFY) as AuthUser & { typ?: string };
+  if (p.typ !== 'user') throw new Error('wrong token type');
   return p;
 };
 
@@ -49,8 +60,9 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
   } catch {
     return next(HttpError.unauthorized('Session expired, please login again'));
   }
-  const u = await User.findById(p.sub, { status: 1, roles: 1, lastActiveAt: 1 }).lean();
+  const u = await User.findById(p.sub, { status: 1, roles: 1, lastActiveAt: 1, tokenVersion: 1 }).lean();
   if (!u || u.status === 'deleted') return next(HttpError.unauthorized('Account not found'));
+  if ((p.tv ?? 0) !== (u.tokenVersion ?? 0)) return next(HttpError.unauthorized('Session expired, please login again'));
   if (u.status === 'suspended') return next(new HttpError(403, 'SUSPENDED', 'Your account is suspended. Contact support.'));
   req.user = { sub: p.sub, roles: u.roles as Role[] };
   if (!u.lastActiveAt || Date.now() - u.lastActiveAt.getTime() > 60_000) void User.updateOne({ _id: u._id }, { lastActiveAt: new Date() }).exec();
@@ -80,7 +92,7 @@ export const requireAdmin = (...roles: AdminRole[]): RequestHandler => async (re
   if (!token) return next(HttpError.unauthorized());
   let p: AuthAdmin;
   try {
-    p = jwt.verify(token, env.JWT_ACCESS_SECRET) as AuthAdmin;
+    p = jwt.verify(token, env.JWT_ACCESS_SECRET, VERIFY) as AuthAdmin;
     if (p.typ !== 'admin') throw new Error();
   } catch {
     return next(HttpError.unauthorized('Admin session expired'));

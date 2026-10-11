@@ -17,7 +17,7 @@ import { PushToken } from '../../models/PushToken.js';
 import { categoriesWithCounts } from '../catalog/catalog.routes.js';
 import { refreshRating } from '../workers/workers.service.js';
 import { grant, planDto, refundPayment } from '../subscription/subscription.service.js';
-import { hashPassword } from './admin.auth.js';
+import { hashPassword } from '../../lib/password.js';
 
 export const adminRouter = Router();
 const ADMINS = requireAdmin('super_admin', 'admin');
@@ -169,17 +169,22 @@ adminRouter.patch('/users/:id', ADMINS, idParam, validate({ body: userPatch }), 
   if (!u) throw HttpError.notFound();
   const label = `${u.name || 'User'} (${u.mobile})`;
   if (b.status === 'deleted') {
-    // Process deletion request: anonymise PII, remove public profile & devices. Conversations stay for the other party.
+    // Process deletion request: anonymise PII, remove public profile & devices. The thread stays for the other party,
+    // but this user's own messages are wiped (Privacy Policy: messages are deleted when deletion is processed).
     removePublic(u.avatar);
     const wp = await WorkerProfile.findOneAndDelete({ user: id }).lean();
     if (wp) [wp.photo, ...wp.portfolio].forEach((p) => removePublic(p));
     await PushToken.deleteMany({ userId: id });
+    const sent = await Message.find({ sender: id, image: { $exists: true, $ne: null } }, { image: 1 }).lean();
+    sent.forEach((m) => removePublic(m.image));
+    await Message.updateMany({ sender: id }, { $set: { text: '', moderation: 'removed' }, $unset: { image: 1 } });
     Object.assign(u, { name: 'Deleted user', email: undefined, avatar: '', mobile: `deleted_${id}`, status: 'deleted', statusReason: b.reason, roles: ['customer'] });
   } else {
     u.status = b.status;
     u.statusReason = b.reason;
     await WorkerProfile.updateOne({ user: id }, { restricted: b.status === 'suspended' });
   }
+  if (b.status !== 'active') u.tokenVersion = (u.tokenVersion ?? 0) + 1; // revoke every session immediately
   await u.save();
   void audit(req, `user.${b.status === 'active' ? 'reinstate' : b.status === 'suspended' ? 'suspend' : 'delete'}`, { type: 'user', id, label }, b.reason);
   if (b.status === 'suspended') emitTo(id, 'account:suspended', { reason: b.reason });
@@ -404,7 +409,7 @@ adminRouter.patch('/complaints/:id', ANY, validate({ params: z.object({ id: z.st
     log('user warned');
   }
   if (b.action === 'restrict') { await WorkerProfile.updateOne({ user: c.targetUser }, { restricted: true }); log('worker profile restricted'); }
-  if (b.action === 'suspend') { await User.updateOne({ _id: c.targetUser }, { status: 'suspended', statusReason: `Complaint ${c.code}` }); emitTo(String(c.targetUser), 'account:suspended', {}); log('user suspended'); }
+  if (b.action === 'suspend') { await User.updateOne({ _id: c.targetUser }, { status: 'suspended', statusReason: `Complaint ${c.code}`, $inc: { tokenVersion: 1 } }); emitTo(String(c.targetUser), 'account:suspended', {}); log('user suspended'); }
   await c.save();
   if (b.status && ['in_progress', 'resolved'].includes(b.status)) {
     void notify(c.reporter, { type: 'complaint', title: `Complaint #${c.code} ${b.status === 'resolved' ? 'resolved' : 'in progress'}`, body: b.status === 'resolved' ? c.resolution ?? 'Our team has resolved your complaint.' : 'Our team is looking into it.', link: '/help' });
@@ -456,8 +461,10 @@ adminRouter.patch('/reviews/:id', ADMINS, idParam, validate({ body: z.object({ s
 // ======================================================================
 const bannerDto = (b: { _id: unknown; title: string; subtitle?: string | null; tint?: string | null; link?: string | null; active: boolean; sort: number }) =>
   ({ id: String(b._id), title: b.title, subtitle: b.subtitle ?? '', tint: b.tint ?? '', link: b.link ?? undefined, active: b.active, sort: b.sort });
-const bannerBody = z.object({ title: z.string().trim().min(2).max(60), subtitle: z.string().trim().max(120).default(''), tint: z.string().max(80).default('from-indigo-600 to-violet-500'), link: z.string().max(120).optional(), active: z.boolean().default(true), sort: z.number().int().default(0) });
-const bannerPatch = z.object({ title: z.string().trim().min(2).max(60), subtitle: z.string().trim().max(120), tint: z.string().max(80), link: z.string().max(120), active: z.boolean(), sort: z.number().int() }).partial();
+// Banner links are rendered as app links — only in-app paths or https URLs (never javascript:/data: URLs).
+const bannerLink = z.string().trim().max(120).regex(/^(/(?!/)|https://)/, 'Link must start with / or https://');
+const bannerBody = z.object({ title: z.string().trim().min(2).max(60), subtitle: z.string().trim().max(120).default(''), tint: z.string().max(80).default('from-indigo-600 to-violet-500'), link: z.union([bannerLink, z.literal('')]).optional(), active: z.boolean().default(true), sort: z.number().int().default(0) });
+const bannerPatch = z.object({ title: z.string().trim().min(2).max(60), subtitle: z.string().trim().max(120), tint: z.string().max(80), link: z.union([bannerLink, z.literal('')]), active: z.boolean(), sort: z.number().int() }).partial();
 
 adminRouter.get('/banners', ADMINS, async (_req, res) => ok(res, (await Banner.find().sort({ sort: 1 }).lean()).map(bannerDto)));
 adminRouter.post('/banners', ADMINS, validate({ body: bannerBody }), async (req, res) => {

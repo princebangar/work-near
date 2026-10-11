@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
-import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
+import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { HttpError, logger, ok, validate } from '../../lib/core.js';
+import { ipKey, limiter } from '../../lib/limits.js';
 import { sendOtpSms } from '../../lib/sms.js';
 import { signTokens, verifyRefresh, type Role } from '../../middlewares/auth.js';
 import { Otp, User } from '../../models/user.js';
@@ -13,26 +13,25 @@ import { userDto } from '../me/me.service.js';
 /** Current Terms/Privacy version the user accepts at sign-up (SRS 5.1). Bump when policies change. */
 export const CONSENT_VERSION = '2026-10-01';
 
-const hash = (s: string) => createHash('sha256').update(s).digest('hex');
+// Keyed hash: a leaked `otps` collection can't be brute-forced offline (6 digits = only 1M possibilities).
+const hash = (code: string, mobile: string) => createHmac('sha256', env.JWT_REFRESH_SECRET).update(`otp:${mobile}:${code}`).digest('hex');
 
 /** Default OTP for local testing (USE_DEFAULT_OTP) or a single QA number (USE_DEFAULT_TEST_PHONE). Never in production. */
 const usesDefaultOtp = (mobile: string) =>
   !env.isProd && (env.USE_DEFAULT_OTP || (env.USE_DEFAULT_TEST_PHONE && mobile === env.DEFAULT_TEST_PHONE));
 
 const mobile = z.string().regex(/^[6-9]\d{9}$/, 'Enter a valid 10-digit Indian mobile number');
-const authLimiter = rateLimit({
-  windowMs: env.AUTH_RATE_LIMIT_WINDOW * 60_000,
-  limit: env.AUTH_RATE_LIMIT_MAX,
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  keyGenerator: (req) => `${req.body?.mobile ?? ''}|${ipKeyGenerator(req.ip ?? '')}`,
-  skip: () => !env.RATE_LIMIT_ENABLED,
+const authLimiter = limiter({
+  name: 'auth', windowMs: env.AUTH_RATE_LIMIT_WINDOW * 60_000, limit: env.AUTH_RATE_LIMIT_MAX,
+  key: (req) => `${String(req.body?.mobile ?? '').slice(0, 15)}|${ipKey(req)}`,
 });
+// Per-IP cap on OTP sends across *different* numbers (SMS pumping / toll fraud). Generous for shared mobile IPs.
+const otpIpLimiter = limiter({ name: 'otp-ip', windowMs: 60 * 60_000, limit: env.OTP_IP_RATE_LIMIT, key: ipKey, message: 'Too many OTP requests from this network. Please try again later.' });
 
 export const authRouter = Router();
 authRouter.use(authLimiter);
 
-authRouter.post('/request-otp', validate({ body: z.object({ mobile }) }), async (_req, res) => {
+authRouter.post('/request-otp', otpIpLimiter, validate({ body: z.object({ mobile }) }), async (_req, res) => {
   const { mobile: m } = res.locals.body as { mobile: string };
   const now = Date.now();
   const prev = await Otp.findOne({ mobile: m }).lean();
@@ -56,7 +55,7 @@ authRouter.post('/request-otp', validate({ body: z.object({ mobile }) }), async 
     { mobile: m },
     {
       $set: {
-        hash: hash(code), attempts: 0,
+        hash: hash(code, m), attempts: 0,
         expiresAt: new Date(now + env.OTP_EXPIRY_SECONDS * 1000),
         resendAt: new Date(now + env.OTP_RESEND_SECONDS * 1000),
         sent: [...sent, new Date(now)],
@@ -79,7 +78,7 @@ authRouter.post('/verify-otp', validate({ body: verifyBody }), async (_req, res)
     await e.save();
     throw HttpError.tooMany('Too many wrong attempts. Request a new OTP.');
   }
-  if (!timingSafeEqual(Buffer.from(e.hash, 'hex'), Buffer.from(hash(otp), 'hex'))) {
+  if (!timingSafeEqual(Buffer.from(e.hash, 'hex'), Buffer.from(hash(otp, m), 'hex'))) {
     await e.save();
     const left = env.OTP_MAX_ATTEMPTS - e.attempts;
     throw HttpError.badRequest(`Invalid OTP${left > 0 ? ` — ${left} attempt${left > 1 ? 's' : ''} left` : ''}`, 'INVALID_OTP');
@@ -105,20 +104,21 @@ authRouter.post('/verify-otp', validate({ body: verifyBody }), async (_req, res)
   user.lastLoginAt = new Date();
   await user.save();
 
-  const { accessToken, refreshToken } = signTokens({ sub: String(user._id), roles: user.roles as Role[] });
+  const { accessToken, refreshToken } = signTokens({ sub: String(user._id), roles: user.roles as Role[], tv: user.tokenVersion ?? 0 });
   ok(res, { token: accessToken, refreshToken, user: await userDto(String(user._id)), isNew: isNew || !user.name });
 });
 
 authRouter.post('/refresh', validate({ body: z.object({ refreshToken: z.string().min(10) }) }), async (_req, res) => {
   const { refreshToken } = res.locals.body as { refreshToken: string };
-  let sub: string;
+  let p: { sub: string; tv?: number };
   try {
-    sub = verifyRefresh(refreshToken).sub;
+    p = verifyRefresh(refreshToken);
   } catch {
     throw HttpError.unauthorized('Session expired, please login again');
   }
-  const u = await User.findById(sub, { roles: 1, status: 1 }).lean();
-  if (!u || u.status === 'suspended' || u.status === 'deleted') throw HttpError.unauthorized('Session expired, please login again');
-  const t = signTokens({ sub, roles: u.roles as Role[] });
+  const u = await User.findById(p.sub, { roles: 1, status: 1, tokenVersion: 1 }).lean();
+  const revoked = (p.tv ?? 0) !== (u?.tokenVersion ?? 0);
+  if (!u || u.status === 'suspended' || u.status === 'deleted' || revoked) throw HttpError.unauthorized('Session expired, please login again');
+  const t = signTokens({ sub: p.sub, roles: u.roles as Role[], tv: u.tokenVersion ?? 0 });
   ok(res, { token: t.accessToken, refreshToken: t.refreshToken });
 });

@@ -4,6 +4,8 @@ import { HttpError, ok, validate } from '../../lib/core.js';
 import { optionalAuth, requireAuth } from '../../middlewares/auth.js';
 import { requireFeature } from '../../middlewares/features.js';
 import { privateRel, publicUrl, removeFile, removePublic, upload } from '../../lib/upload.js';
+import { ipKey, limiter, userKey } from '../../lib/limits.js';
+import { env } from '../../config/env.js';
 import { notify } from '../../lib/notify.js';
 import { Category, getSettings } from '../../models/content.js';
 import { User } from '../../models/user.js';
@@ -13,6 +15,10 @@ import { userDto } from '../me/me.service.js';
 import { completion, searchNearby, workerDetail } from './workers.service.js';
 
 export const workersRouter = Router();
+
+// SRS 11: rate-limit search and uploads. Search is public, so it is keyed by IP (stops scraping the worker directory).
+const searchLimiter = limiter({ name: 'search', windowMs: 60_000, limit: env.SEARCH_RATE_LIMIT, key: ipKey, message: 'Too many searches. Please wait a minute.' });
+export const uploadLimiter = limiter({ name: 'upload', windowMs: 60 * 60_000, limit: env.UPLOAD_RATE_LIMIT, key: userKey, message: 'Too many uploads. Please try again later.' });
 
 const bool = z.enum(['true', 'false']).transform((v) => v === 'true').optional();
 const lat = z.coerce.number().min(-90).max(90);
@@ -30,7 +36,7 @@ const searchQuery = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
-workersRouter.get('/search', optionalAuth, validate({ query: searchQuery }), async (req, res) => {
+workersRouter.get('/search', searchLimiter, optionalAuth, validate({ query: searchQuery }), async (req, res) => {
   ok(res, await searchNearby(res.locals.query as z.infer<typeof searchQuery>, req.user?.sub));
 });
 
@@ -108,7 +114,7 @@ workersRouter.patch('/me/status', requireAuth, validate({ body: z.object({ visib
   ok(res, { visible: r.visible, available: r.available, showPhone: r.showPhone });
 });
 
-workersRouter.post('/profile/photo', requireAuth, upload.avatar, async (req, res) => {
+workersRouter.post('/profile/photo', requireAuth, uploadLimiter, upload.avatar, async (req, res) => {
   if (!req.file) throw HttpError.badRequest('Choose a photo');
   const w = await WorkerProfile.findOne({ user: req.user!.sub });
   if (!w) {
@@ -121,7 +127,7 @@ workersRouter.post('/profile/photo', requireAuth, upload.avatar, async (req, res
   ok(res, { photo: w.photo });
 });
 
-workersRouter.post('/profile/portfolio', requireAuth, requireFeature('portfolio'), upload.portfolio, async (req, res) => {
+workersRouter.post('/profile/portfolio', requireAuth, requireFeature('portfolio'), uploadLimiter, upload.portfolio, async (req, res) => {
   const files = (req.files as Express.Multer.File[]) ?? [];
   const w = await WorkerProfile.findOne({ user: req.user!.sub });
   if (!w) {
@@ -139,8 +145,10 @@ workersRouter.post('/profile/portfolio', requireAuth, requireFeature('portfolio'
 
 workersRouter.delete('/profile/portfolio', requireAuth, validate({ body: z.object({ url: z.string().max(500) }) }), async (req, res) => {
   const { url } = res.locals.body as { url: string };
-  const w = await WorkerProfile.findOneAndUpdate({ user: req.user!.sub }, { $pull: { portfolio: url } }, { returnDocument: 'after' }).lean();
-  if (!w) throw HttpError.notFound();
+  // Match on the URL too: the file is deleted only if it really was in *this* worker's portfolio
+  // (otherwise anyone could delete another user's photo by sending its URL).
+  const w = await WorkerProfile.findOneAndUpdate({ user: req.user!.sub, portfolio: url }, { $pull: { portfolio: url } }, { returnDocument: 'after' }).lean();
+  if (!w) throw HttpError.notFound('Photo not found');
   removePublic(url);
   ok(res, { portfolio: w.portfolio });
 });
@@ -167,7 +175,7 @@ verificationRouter.get('/me', requireAuth, async (req, res) => {
   ok(res, v ? { id: String(v._id), type: v.type, status: v.status, reason: v.reason, submittedAt: (v.createdAt as Date).toISOString(), documents: v.documents.length } : null);
 });
 
-verificationRouter.post('/submissions', requireAuth, requireFeature('verification'), upload.verification, async (req, res) => {
+verificationRouter.post('/submissions', requireAuth, requireFeature('verification'), uploadLimiter, upload.verification, async (req, res) => {
   const files = (req.files as Express.Multer.File[]) ?? [];
   const type = z.enum(['phone', 'id', 'id_address']).safeParse(req.body?.type);
   const cleanup = () => files.forEach((f) => removeFile(f.path));

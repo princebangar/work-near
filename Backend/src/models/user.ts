@@ -26,6 +26,7 @@ const userSchema = new Schema(
     deletionRequestedAt: Date,
     lastLoginAt: Date,
     lastActiveAt: { type: Date, default: Date.now },
+    tokenVersion: { type: Number, default: 0 }, // bump to revoke every issued token (suspend / delete)
   },
   { timestamps: true, versionKey: false },
 );
@@ -35,7 +36,7 @@ userSchema.index({ name: 'text', mobile: 'text' });
 export type UserDoc = InferSchemaType<typeof userSchema> & { _id: import('mongoose').Types.ObjectId };
 export const User = model('User', userSchema);
 
-/** OTP challenges. Only a SHA-256 hash is stored; Mongo TTL removes rows after the rate window. */
+/** OTP challenges. Only a keyed HMAC-SHA256 of the code is stored; Mongo TTL removes rows after the rate window. */
 const otpSchema = new Schema(
   {
     mobile: { type: String, required: true, unique: true },
