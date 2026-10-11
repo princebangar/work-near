@@ -311,7 +311,7 @@ export function RoleSetup() {
         ))}
       </div>
       <div className="mt-6">
-        <Input label={t('yourName')} value={name} maxLength={80} autoComplete="name" onChange={(e) => setName(e.target.value)} placeholder="e.g. Rahul Sharma"
+        <Input label={t('yourName')} value={name} maxLength={80} autoComplete="name" onChange={(e) => setName(e.target.value)} placeholder="e.g. Prince Bangar"
           error={errs.name ?? (name.trim() && nameErr ? t(nameErr) : undefined)} />
       </div>
       {m.error && !errs.name && <p role="alert" className="mt-2 text-sm text-danger">{errorMessage(m.error)}</p>}
