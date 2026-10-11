@@ -462,7 +462,7 @@ adminRouter.patch('/reviews/:id', ADMINS, idParam, validate({ body: z.object({ s
 const bannerDto = (b: { _id: unknown; title: string; subtitle?: string | null; tint?: string | null; link?: string | null; active: boolean; sort: number }) =>
   ({ id: String(b._id), title: b.title, subtitle: b.subtitle ?? '', tint: b.tint ?? '', link: b.link ?? undefined, active: b.active, sort: b.sort });
 // Banner links are rendered as app links — only in-app paths or https URLs (never javascript:/data: URLs).
-const bannerLink = z.string().trim().max(120).regex(/^(/(?!/)|https://)/, 'Link must start with / or https://');
+const bannerLink = z.string().trim().max(120).regex(/^(\/(?!\/)|https:\/\/)/, 'Link must start with / or https://');
 const bannerBody = z.object({ title: z.string().trim().min(2).max(60), subtitle: z.string().trim().max(120).default(''), tint: z.string().max(80).default('from-indigo-600 to-violet-500'), link: z.union([bannerLink, z.literal('')]).optional(), active: z.boolean().default(true), sort: z.number().int().default(0) });
 const bannerPatch = z.object({ title: z.string().trim().min(2).max(60), subtitle: z.string().trim().max(120), tint: z.string().max(80), link: z.union([bannerLink, z.literal('')]), active: z.boolean(), sort: z.number().int() }).partial();
 

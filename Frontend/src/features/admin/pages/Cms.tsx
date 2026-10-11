@@ -163,7 +163,7 @@ function BannerDrawer({ banner, nextSort, onClose }: { banner: AdminBanner | nul
   const submit = () => {
     if (f.title.trim().length < 2) return setErr('Title must be at least 2 characters');
     const link = f.link?.trim();
-    if (link && !/^(\/|https?:\/\/)/.test(link)) return setErr('Link must start with / (in-app page) or https://');
+    if (link && !/^(\/(?!\/)|https:\/\/)/.test(link)) return setErr('Link must start with / (in-app page) or https://');
     setErr(null);
     save.mutate({ id: banner?.id, body: { ...f, title: f.title.trim(), subtitle: f.subtitle.trim(), link: link || '' } }, { onSuccess: onClose });
   };

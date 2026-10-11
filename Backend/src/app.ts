@@ -5,7 +5,7 @@ import cors from 'cors';
 import compression from 'compression';
 import { pinoHttp } from 'pino-http';
 import { env } from './config/env.js';
-import { errorHandler, logger, notFound, ok } from './lib/core.js';
+import { errorHandler, logger, notFound } from './lib/core.js';
 import { PUBLIC_ROOT } from './lib/upload.js';
 import { ipKey, limiter } from './lib/limits.js';
 import { redis } from './lib/redis.js';
