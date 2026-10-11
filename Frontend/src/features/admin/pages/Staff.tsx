@@ -1,20 +1,21 @@
 import { useState } from 'react';
-import { Check, Copy, KeyRound, Lock, Plus, RefreshCw, ShieldCheck, ShieldOff, UserCog, UserMinus, UserPlus } from 'lucide-react';
+import { Check, Copy, KeyRound, ListChecks, Lock, Plus, RefreshCw, ShieldCheck, ShieldOff, UserCog, UserMinus, UserPlus } from 'lucide-react';
 import { Avatar } from '@/components/ui';
 import { useAdminStaff, useCreateStaff, useUpdateStaff } from '@/api/admin';
 import { toast, useAuth } from '@/store';
 import { timeAgo } from '@/lib/format';
-import type { AdminRole, AdminStaff, StaffInput } from '@/types/admin';
-import { copyText, dateTime, isSuper, randomPassword, roleLabel, toneOf } from '../lib';
+import type { AdminPermissions, AdminRole, AdminStaff, StaffInput } from '@/types/admin';
+import { ACTIONS, MODULES, copyText, dateTime, isSuper, randomPassword, roleLabel, toneOf } from '../lib';
 import { Btn, ConfirmDialog, DataTable, Drawer, EmptyBlock, ErrorBlock, IconBtn, PageHeader, Pill, SelectField, TextField, type Column } from '../components/kit';
 
 const ROLES: { value: AdminRole; label: string; desc: string }[] = [
   { value: 'super_admin', label: 'Super admin', desc: 'Everything, including maintenance mode, refunds, plan creation, staff and audit logs.' },
   { value: 'admin', label: 'Admin', desc: 'Day-to-day operations: users, verifications, catalog, billing (no refunds), content and feature switches.' },
   { value: 'support', label: 'Support', desc: 'Only complaints assigned to them — can warn and restrict, but not suspend or reassign.' },
+  { value: 'sub_admin', label: 'Sub-admin', desc: 'Only the modules you tick — View / Create / Edit / Delete per module. Never staff, audit logs, refunds or maintenance.' },
 ];
 
-type Pending = { s: AdminStaff; kind: 'role'; role: AdminRole } | { s: AdminStaff; kind: 'status' } | { s: AdminStaff; kind: 'mfa' } | null;
+type Pending = { s: AdminStaff; kind: 'role'; role: AdminRole } | { s: AdminStaff; kind: 'status' } | { s: AdminStaff; kind: 'mfa' } | { s: AdminStaff; kind: 'perms' } | null;
 
 export function StaffPage() {
   const me = useAuth((s) => s.admin);
@@ -52,7 +53,8 @@ export function StaffPage() {
             aria-label={`Role for ${s.name}`}
             value={s.role}
             className="w-40"
-            onChange={(e) => setPending({ s, kind: 'role', role: e.target.value as AdminRole })}
+            // Becoming a sub-admin needs a permission set first → open the matrix instead of a plain confirm.
+            onChange={(e) => (e.target.value === 'sub_admin' ? setPending({ s: { ...s, role: 'sub_admin' }, kind: 'perms' }) : setPending({ s, kind: 'role', role: e.target.value as AdminRole }))}
             options={ROLES.map((r) => ({ value: r.value, label: r.label }))}
           />
         ) : (
@@ -76,6 +78,7 @@ export function StaffPage() {
             <span className="text-xs text-ink-3">—</span>
           ) : (
             <div className="flex justify-end gap-1">
+              {s.role === 'sub_admin' && <Btn size="sm" icon={<ListChecks size={14} />} onClick={() => setPending({ s, kind: 'perms' })}>Permissions</Btn>}
               {s.mfa && <IconBtn label={`Reset MFA for ${s.name}`} onClick={() => setPending({ s, kind: 'mfa' })}><KeyRound size={16} /></IconBtn>}
               <Btn size="sm" tone={s.status === 'active' ? 'dangerGhost' : 'successGhost'} icon={s.status === 'active' ? <UserMinus size={14} /> : <UserPlus size={14} />} onClick={() => setPending({ s, kind: 'status' })}>
                 {s.status === 'active' ? 'Disable' : 'Enable'}
@@ -95,7 +98,7 @@ export function StaffPage() {
         actions={sup && <Btn tone="primary" icon={<Plus size={16} />} onClick={() => setAdding(true)}>Add staff</Btn>}
       />
 
-      <div className="mb-5 grid gap-3 md:grid-cols-3">
+      <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {ROLES.map((r) => (
           <div key={r.value} className="rounded-2xl border border-line bg-surface p-4">
             <p className="flex items-center gap-2 text-sm font-bold text-ink">
@@ -121,6 +124,7 @@ export function StaffPage() {
       )}
 
       {adding && <AddStaffDrawer onClose={() => setAdding(false)} />}
+      {pending?.kind === 'perms' && <PermissionsDrawer staff={pending.s} onClose={close} />}
 
       <ConfirmDialog
         open={pending?.kind === 'role'}
@@ -157,7 +161,7 @@ export function StaffPage() {
 
 function AddStaffDrawer({ onClose }: { onClose: () => void }) {
   const create = useCreateStaff();
-  const [f, setF] = useState<StaffInput>(() => ({ name: '', email: '', password: randomPassword(), role: 'support' }));
+  const [f, setF] = useState<StaffInput>(() => ({ name: '', email: '', password: randomPassword(), role: 'support', permissions: {} }));
   const [err, setErr] = useState<string | null>(null);
   const [created, setCreated] = useState<StaffInput | null>(null);
   const [copied, setCopied] = useState(false);
@@ -166,8 +170,9 @@ function AddStaffDrawer({ onClose }: { onClose: () => void }) {
     if (f.name.trim().length < 2) return setErr('Name must be at least 2 characters');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) return setErr('Enter a valid email');
     if (f.password.length < 8) return setErr('Temporary password must be at least 8 characters');
+    if (f.role === 'sub_admin' && !Object.keys(f.permissions ?? {}).length) return setErr('Tick at least one permission for the sub-admin');
     setErr(null);
-    const body = { ...f, name: f.name.trim(), email: f.email.trim().toLowerCase() };
+    const body = { ...f, name: f.name.trim(), email: f.email.trim().toLowerCase(), permissions: f.role === 'sub_admin' ? f.permissions : undefined };
     create.mutate(body, { onSuccess: () => setCreated(body) });
   };
   const copyCreds = async () => {
@@ -181,6 +186,7 @@ function AddStaffDrawer({ onClose }: { onClose: () => void }) {
     <Drawer
       open
       onClose={onClose}
+      wide={!created && f.role === 'sub_admin'}
       title={created ? 'Staff member added' : 'Add staff'}
       sub={created ? 'Share these details privately — the password is shown only once.' : 'They sign in at /admin/login and should change the password and set up MFA.'}
       footer={
@@ -226,10 +232,108 @@ function AddStaffDrawer({ onClose }: { onClose: () => void }) {
               </label>
             ))}
           </div>
+          {f.role === 'sub_admin' && <PermissionMatrix value={f.permissions ?? {}} onChange={(permissions) => setF({ ...f, permissions })} />}
           {err && <p role="alert" className="text-sm text-danger">{err}</p>}
           <button type="submit" hidden />
         </form>
       )}
+    </Drawer>
+  );
+}
+
+/**
+ * Module × action grid for sub-admins. Ticking Create / Edit / Delete also ticks View (the server enforces the same),
+ * and the row switch toggles every action of a module at once.
+ */
+function PermissionMatrix({ value, onChange }: { value: AdminPermissions; onChange: (p: AdminPermissions) => void }) {
+  const toggle = (m: (typeof MODULES)[number]['key'], a: (typeof ACTIONS)[number]['key']) => {
+    const row = { ...(value[m] ?? {}) };
+    const on = !row[a];
+    if (on) row[a] = true;
+    else delete row[a];
+    if (on && a !== 'view') row.view = true;
+    if (!on && a === 'view') { delete row.create; delete row.edit; delete row.delete; } // no view → nothing else
+    const next = { ...value, [m]: row };
+    if (!Object.keys(row).length) delete next[m];
+    onChange(next);
+  };
+  const toggleRow = (m: (typeof MODULES)[number]['key']) => {
+    const full = ACTIONS.every((a) => value[m]?.[a.key]);
+    const next = { ...value };
+    if (full) delete next[m];
+    else next[m] = { view: true, create: true, edit: true, delete: true };
+    onChange(next);
+  };
+  const count = Object.keys(value).length;
+  return (
+    <div>
+      <div className="mb-2 flex items-end justify-between gap-2">
+        <div>
+          <p className="text-[13px] font-semibold text-ink-2">Permissions</p>
+          <p className="text-xs text-ink-3">Only ticked modules appear in their sidebar. Every action is also checked by the server.</p>
+        </div>
+        <span className="shrink-0 rounded-md bg-primary-soft px-2 py-0.5 text-xs font-bold text-primary">{count} module{count === 1 ? '' : 's'}</span>
+      </div>
+      <div className="overflow-x-auto rounded-2xl border border-line">
+        <table className="w-full min-w-[520px] text-sm">
+          <thead className="bg-surface-2/70 text-xs text-ink-2">
+            <tr>
+              <th className="px-3 py-2.5 text-left font-semibold">Module</th>
+              {ACTIONS.map((a) => <th key={a.key} className="w-16 px-2 py-2.5 text-center font-semibold">{a.label}</th>)}
+              <th className="w-14 px-2 py-2.5 text-center font-semibold">All</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {MODULES.map((m) => {
+              const full = ACTIONS.every((a) => value[m.key]?.[a.key]);
+              return (
+                <tr key={m.key} className={value[m.key] ? 'bg-primary-soft/30' : undefined}>
+                  <td className="px-3 py-2.5">
+                    <span className="block font-semibold text-ink">{m.label}</span>
+                    <span className="block text-[11px] text-ink-3">{m.hint}</span>
+                  </td>
+                  {ACTIONS.map((a) => (
+                    <td key={a.key} className="px-2 py-2.5 text-center">
+                      <input type="checkbox" className="size-4 accent-primary" aria-label={`${m.label}: ${a.label}`}
+                        checked={!!value[m.key]?.[a.key]} onChange={() => toggle(m.key, a.key)} />
+                    </td>
+                  ))}
+                  <td className="px-2 py-2.5 text-center">
+                    <input type="checkbox" className="size-4 accent-primary" aria-label={`${m.label}: all actions`} checked={full} onChange={() => toggleRow(m.key)} />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/** Edit a sub-admin's permissions (or make someone a sub-admin — `staff.role` is already 'sub_admin' then). */
+function PermissionsDrawer({ staff, onClose }: { staff: AdminStaff; onClose: () => void }) {
+  const update = useUpdateStaff();
+  const [perms, setPerms] = useState<AdminPermissions>(() => staff.permissions ?? {});
+  const empty = !Object.keys(perms).length;
+  return (
+    <Drawer
+      open
+      wide
+      onClose={onClose}
+      title={`Permissions · ${staff.name}`}
+      sub="Changes apply on their next click — no need to sign out."
+      footer={
+        <>
+          <Btn tone="ghost" onClick={onClose}>Cancel</Btn>
+          <Btn tone="primary" disabled={empty} loading={update.isPending} onClick={() => update.mutate({ id: staff.id, patch: { role: 'sub_admin', permissions: perms } }, { onSuccess: onClose })}>
+            Save permissions
+          </Btn>
+        </>
+      }
+    >
+      <PermissionMatrix value={perms} onChange={setPerms} />
+      {empty && <p role="alert" className="mt-3 text-sm text-danger">Tick at least one permission.</p>}
     </Drawer>
   );
 }

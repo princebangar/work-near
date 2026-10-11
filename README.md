@@ -12,10 +12,10 @@ Hyperlocal service marketplace: customers find workers within 5/10/15 KM, chat d
 cd Backend
 npm install
 npm run dev             # http://localhost:5000  (GET /health)
-# On every boot the server builds indexes, default content (categories, plans, legal pages, FAQs, settings)
-# and the first super admin from SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD — no script needed.
-# Optional local helpers live in Backend/scripts/ (gitignored): `npm run seed -- --demo` (24 demo workers),
-# `npm run security:check`, `bash scripts/smoke-test.sh`.
+# On every boot the server builds indexes, the settings row and the first super admin from
+# SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD. No content is pre-seeded — categories, plans, banners, FAQs and
+# legal pages are all created from the admin panel.
+# Optional local test helpers live in Backend/scripts/ (gitignored): `npm run e2e`, `npm run security:check`.
 
 cd ../Frontend
 npm install

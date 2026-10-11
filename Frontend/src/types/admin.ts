@@ -1,19 +1,20 @@
 // Admin-panel domain types — mirror Backend/src/modules/admin/*.ts (see Backend/API.md → Admin).
-import type { AdminRole, AppSettings, ComplaintStatus, FeatureKey, Maintenance, Role, VerificationType } from '@/types';
+import type { AdminModule, AdminPermissions, AdminRole, AppSettings, ComplaintStatus, FeatureKey, Maintenance, PermAction, Role, VerificationType } from '@/types';
 
-export type { AdminRole, AppSettings, ComplaintStatus, FeatureKey, Maintenance, Role, VerificationType };
+export type { AdminModule, AdminPermissions, AdminRole, AppSettings, ComplaintStatus, FeatureKey, Maintenance, PermAction, Role, VerificationType };
 
 export interface Page<T> { items: T[]; nextCursor: string | null; total: number }
 export type ListParams = Record<string, string | number | undefined>;
 
 // ---------- Auth ----------
-export interface AdminSession { token: string; id: string; name: string; email: string; role: AdminRole; mfaEnabled: boolean }
+export interface AdminSession { token: string; id: string; name: string; email: string; role: AdminRole; mfaEnabled: boolean; permissions: AdminPermissions }
 export interface LoginEntry { at: string; ip?: string; ok: boolean }
 export interface AdminMe {
   id: string;
   name: string;
   email: string;
   role: AdminRole;
+  permissions: AdminPermissions;
   mfaEnabled: boolean;
   lastLoginAt?: string;
   loginHistory: LoginEntry[];
@@ -230,9 +231,20 @@ export interface SettingsPatch {
 // ---------- System ----------
 export interface AuditEntry { id: string; actor: string; action: string; target: string; reason?: string; ip?: string; at: string }
 export type StaffStatus = 'active' | 'disabled';
-export interface AdminStaff { id: string; name: string; email: string; role: AdminRole; status: StaffStatus; mfa: boolean; lastLoginAt?: string }
-export interface StaffInput { name: string; email: string; password: string; role: AdminRole }
-export interface StaffPatch { role?: AdminRole; status?: StaffStatus; resetMfa?: boolean }
+export interface AdminStaff { id: string; name: string; email: string; role: AdminRole; status: StaffStatus; mfa: boolean; lastLoginAt?: string; permissions: AdminPermissions }
+export interface StaffInput { name: string; email: string; password: string; role: AdminRole; permissions?: AdminPermissions }
+export interface StaffPatch { role?: AdminRole; status?: StaffStatus; resetMfa?: boolean; permissions?: AdminPermissions }
+
+// ---------- Broadcast notifications ----------
+export type BroadcastAudience = 'all' | 'customers' | 'workers' | 'custom';
+export type BroadcastKind = 'announcement' | 'offer';
+export interface BroadcastInput { title: string; body: string; link: string; kind: BroadcastKind; audience: BroadcastAudience; targetIds: string[] }
+export interface BroadcastRow {
+  id: string; title: string; body: string; link?: string; kind: BroadcastKind; audience: BroadcastAudience;
+  status: 'sending' | 'sent' | 'failed'; recipients: number; pushSent: number; createdBy: string; createdAt: string; error?: string;
+}
+export interface BroadcastCounts { all: number; customers: number; workers: number }
+export interface BroadcastRecipient { id: string; name: string; workerName?: string; mobile: string; roles: Role[]; avatar?: string }
 
 export type ExportType = 'users' | 'transactions' | 'complaints';
 export interface DateRange { from?: string; to?: string }

@@ -5,10 +5,11 @@ import { useNavigate } from 'react-router';
 import { ArrowRight, CornerDownLeft, Loader2, Search, UserRound, type LucideIcon } from 'lucide-react';
 import { Avatar } from '@/components/ui';
 import { useUserSearch } from '@/api/admin';
+import { useAuth } from '@/store';
 import { mediaUrl } from '@/lib/media';
 import { cn } from '@/lib/format';
 import type { AdminRole } from '@/types/admin';
-import { USER_STATUS_LABEL, isAdminPlus, toneOf, useDebounced } from '../lib';
+import { USER_STATUS_LABEL, canAdmin, toneOf, useDebounced } from '../lib';
 import { Kbd, Pill } from '../components/kit';
 import { navFor } from './nav';
 
@@ -27,7 +28,7 @@ function Palette({ onClose, role }: { onClose: () => void; role: AdminRole }) {
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
   const dq = useDebounced(q.trim(), 250);
-  const canUsers = isAdminPlus(role);
+  const canUsers = canAdmin(role, useAuth((s) => s.admin?.permissions), 'users');
   const users = useUserSearch(dq, canUsers);
   const prevFocus = useRef<HTMLElement | null>(null);
 
@@ -38,7 +39,7 @@ function Palette({ onClose, role }: { onClose: () => void; role: AdminRole }) {
 
   const results = useMemo<Result[]>(() => {
     const f = q.trim().toLowerCase();
-    const pages: Result[] = navFor(role)
+    const pages: Result[] = navFor(role, useAuth.getState().admin?.permissions)
       .flatMap((s) => s.items.map((i) => ({ i, s: s.title })))
       .filter(({ i, s }) => !f || `${i.label} ${s} ${i.keywords ?? ''}`.toLowerCase().includes(f))
       .map(({ i, s }) => ({ kind: 'page', key: `p-${i.to}`, label: i.label, section: s, to: i.to ? `/admin/${i.to}` : '/admin', icon: i.icon }));

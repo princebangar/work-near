@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { AdminRole, AppSettings, FeatureKey, Lang, Role, Session, User } from '@/types';
+import type { AdminRole, AdminPermissions, AppSettings, FeatureKey, Lang, Role, Session, User } from '@/types';
 import { APP } from '@/config/env';
 
 // localStorage on web; swap for AsyncStorage when moving to React Native.
@@ -10,7 +10,7 @@ interface AuthState {
   token: string | null;
   refreshToken: string | null;
   user: User | null;
-  admin: { token: string; id?: string; name: string; email?: string; role: AdminRole; mfaEnabled?: boolean } | null;
+  admin: { token: string; id?: string; name: string; email?: string; role: AdminRole; mfaEnabled?: boolean; permissions?: AdminPermissions } | null;
   setSession: (s: Session) => void;
   setTokens: (token: string, refreshToken: string) => void;
   updateUser: (u: Partial<User>) => void;

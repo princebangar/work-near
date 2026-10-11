@@ -3,6 +3,7 @@ import { useMemo, useState, type FocusEvent, type MouseEvent } from 'react';
 import { NavLink } from 'react-router';
 import { ChevronsLeft, MapPin, Search, X } from 'lucide-react';
 import { useAdminBadges } from '@/api/admin';
+import { useAuth } from '@/store';
 import { cn } from '@/lib/format';
 import type { AdminRole } from '@/types/admin';
 import { roleLabel } from '../lib';
@@ -13,7 +14,8 @@ const SIDEBAR_BG = 'bg-[#0f1117]';
 export function Sidebar({ role, collapsed, onToggleCollapse, mobileOpen, onCloseMobile }: {
   role: AdminRole; collapsed: boolean; onToggleCollapse: () => void; mobileOpen: boolean; onCloseMobile: () => void;
 }) {
-  const sections = useMemo(() => navFor(role), [role]);
+  const perms = useAuth((s) => s.admin?.permissions);
+  const sections = useMemo(() => navFor(role, perms), [role, perms]);
   const [filter, setFilter] = useState('');
   const [tip, setTip] = useState<{ label: string; top: number } | null>(null);
   const { data: badges } = useAdminBadges();

@@ -1,7 +1,11 @@
 // Domain types — mirror Backend/API.md (source of truth). Platform-agnostic (reusable in React Native).
 export type Lang = 'en' | 'hi';
 export type Role = 'customer' | 'worker';
-export type AdminRole = 'super_admin' | 'admin' | 'support';
+export type AdminRole = 'super_admin' | 'admin' | 'support' | 'sub_admin';
+/** Admin-panel modules (mirror the sidebar) and the actions a sub-admin can be given on each — Backend lib/permissions.ts. */
+export type AdminModule = 'dashboard' | 'users' | 'verifications' | 'categories' | 'billing' | 'complaints' | 'reviews' | 'cms' | 'broadcast' | 'settings';
+export type PermAction = 'view' | 'create' | 'edit' | 'delete';
+export type AdminPermissions = Partial<Record<AdminModule, Partial<Record<PermAction, boolean>>>>;
 export type ID = string;
 
 export interface Paginated<T> { items: T[]; nextCursor: string | null; total: number }
