@@ -9,7 +9,7 @@ import type { AdminRole } from '@/types/admin';
 import { roleLabel } from '../lib';
 import { navFor, type NavItem } from './nav';
 
-const SIDEBAR_BG = 'bg-[#0f1117]';
+const SIDEBAR_BG = 'bg-[#0a0a0a]';
 
 export function Sidebar({ role, collapsed, onToggleCollapse, mobileOpen, onCloseMobile }: {
   role: AdminRole; collapsed: boolean; onToggleCollapse: () => void; mobileOpen: boolean; onCloseMobile: () => void;
@@ -123,7 +123,7 @@ export function Sidebar({ role, collapsed, onToggleCollapse, mobileOpen, onClose
                               </span>
                             )}
                             {count > 0 && collapsed && (
-                              <span className={cn('absolute top-2 right-4 hidden size-2 rounded-full ring-2 ring-[#0f1117] lg:block', amber ? 'bg-amber-400' : 'bg-rose-500')} aria-hidden />
+                              <span className={cn('absolute top-2 right-4 hidden size-2 rounded-full ring-2 ring-[#0a0a0a] lg:block', amber ? 'bg-amber-400' : 'bg-rose-500')} aria-hidden />
                             )}
                           </>
                         )}
@@ -159,7 +159,7 @@ export function Sidebar({ role, collapsed, onToggleCollapse, mobileOpen, onClose
       {tip && (
         <div
           role="tooltip"
-          className="adm-pop pointer-events-none fixed left-[88px] z-[58] -translate-y-1/2 rounded-lg bg-[#1d2130] px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap text-white shadow-xl ring-1 ring-white/10"
+          className="adm-pop pointer-events-none fixed left-[88px] z-[58] -translate-y-1/2 rounded-lg bg-[#1f1f1f] px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap text-white shadow-xl ring-1 ring-white/10"
           style={{ top: tip.top }}
         >
           {tip.label}

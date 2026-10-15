@@ -9,7 +9,7 @@ import { HttpError } from './core.js';
 /**
  * Local-disk storage. Public files (avatars, portfolio, chat images) are served at /uploads/*.
  * Private files (verification docs, complaint evidence) are never served statically — only through
- * admin-authenticated, audit-logged endpoints. Swap this module for S3/GCS signed URLs later.
+ * admin-authenticated endpoints. Swap this module for S3/GCS signed URLs later.
  */
 export const PUBLIC_ROOT = path.resolve(env.UPLOAD_DIR);
 export const PRIVATE_ROOT = path.resolve(env.PRIVATE_UPLOAD_DIR);

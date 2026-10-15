@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { HttpError, escapeRegex, ok, paged, personName, startOfDay, validate, type AnyFilter } from '../../lib/core.js';
 import { requireAdmin, requirePerm as P } from '../../middlewares/auth.js';
 import { ADMIN_MODULES, MODULE_LABEL, PERM_ACTIONS, can, normalizePermissions, type AdminModule } from '../../lib/permissions.js';
-import { audit } from '../../lib/audit.js';
 import { notify } from '../../lib/notify.js';
 import { broadcast, emitTo } from '../../lib/socket.js';
 import { privatePath, publicUrl, removePublic, upload } from '../../lib/upload.js';
@@ -13,7 +12,7 @@ import { Review, Verification, WorkerProfile } from '../../models/worker.js';
 import { Conversation, Message } from '../../models/chat.js';
 import { Payment, Plan, Subscription } from '../../models/billing.js';
 import { Banner, Category, FEATURE_KEYS, Faq, Page, Setting, getSettings, invalidateSettings, publicSettings } from '../../models/content.js';
-import { Admin, AuditLog, Complaint, SearchLog, type ComplaintLean } from '../../models/ops.js';
+import { Admin, Complaint, SearchLog, type ComplaintLean } from '../../models/ops.js';
 import { PushToken } from '../../models/PushToken.js';
 import { categoriesWithCounts } from '../catalog/catalog.routes.js';
 import { refreshRating } from '../workers/workers.service.js';
@@ -164,13 +163,12 @@ adminRouter.get('/users/:id', P('users'), idParam, async (_req, res) => {
 });
 
 const userPatch = z.object({ status: z.enum(['active', 'suspended', 'deleted']), reason: reasonBody.optional() });
-adminRouter.patch('/users/:id', P('users'), idParam, validate({ body: userPatch }), async (req, res) => {
+adminRouter.patch('/users/:id', P('users'), idParam, validate({ body: userPatch }), async (_req, res) => {
   const id = (res.locals.params as { id: string }).id;
   const b = res.locals.body as z.infer<typeof userPatch>;
   if (b.status !== 'active' && !b.reason) throw HttpError.badRequest('A reason is required');
   const u = await User.findById(id);
   if (!u) throw HttpError.notFound();
-  const label = `${u.name || 'User'} (${u.mobile})`;
   if (b.status === 'deleted') {
     // Process deletion request: anonymise PII, remove public profile & devices. The thread stays for the other party,
     // but this user's own messages are wiped (Privacy Policy: messages are deleted when deletion is processed).
@@ -189,18 +187,16 @@ adminRouter.patch('/users/:id', P('users'), idParam, validate({ body: userPatch 
   }
   if (b.status !== 'active') u.tokenVersion = (u.tokenVersion ?? 0) + 1; // revoke every session immediately
   await u.save();
-  void audit(req, `user.${b.status === 'active' ? 'reinstate' : b.status === 'suspended' ? 'suspend' : 'delete'}`, { type: 'user', id, label }, b.reason);
   if (b.status === 'suspended') emitTo(id, 'account:suspended', { reason: b.reason });
   ok(res, { id, status: u.status });
 });
 
 const workerPatch = z.object({ restricted: z.boolean(), reason: reasonBody });
-adminRouter.patch('/workers/:id', P('users'), idParam, validate({ body: workerPatch }), async (req, res) => {
+adminRouter.patch('/workers/:id', P('users'), idParam, validate({ body: workerPatch }), async (_req, res) => {
   const id = (res.locals.params as { id: string }).id;
   const b = res.locals.body as z.infer<typeof workerPatch>;
   const wp = await WorkerProfile.findOneAndUpdate({ user: id }, { restricted: b.restricted }, { returnDocument: 'after' }).lean();
   if (!wp) throw HttpError.notFound('Worker profile not found');
-  void audit(req, b.restricted ? 'worker.restrict' : 'worker.unrestrict', { type: 'user', id, label: wp.displayName }, b.reason);
   void notify(id, { type: 'system', title: b.restricted ? 'Profile hidden by WorkNear' : 'Profile visible again', body: b.restricted ? `Reason: ${b.reason}` : 'Customers can find you in search again.' });
   ok(res, { restricted: wp.restricted });
 });
@@ -228,13 +224,12 @@ adminRouter.get('/verifications', P('verifications'), LQ, async (_req, res) => {
   ok(res, paged(items, q.cursor, q.limit, total));
 });
 
-/** Streams a private document. Every view is audit-logged (SRS 11). */
-adminRouter.get('/verifications/:id/documents/:idx', P('verifications'), validate({ params: z.object({ id: oid, idx: z.coerce.number().int().min(0).max(9) }) }), async (req, res) => {
+/** Streams a private document (verification staff only). */
+adminRouter.get('/verifications/:id/documents/:idx', P('verifications'), validate({ params: z.object({ id: oid, idx: z.coerce.number().int().min(0).max(9) }) }), async (_req, res) => {
   const { id, idx } = res.locals.params as { id: string; idx: number };
   const v = await Verification.findById(id).lean();
   const doc = v?.documents[idx];
   if (!v || !doc?.path) throw HttpError.notFound('Document not found');
-  await audit(req, 'verification.document_view', { type: 'verification', id, label: doc.name ?? 'document' });
   res.set({ 'Cache-Control': 'private, no-store', 'Content-Type': doc.mime ?? 'application/octet-stream', 'Content-Disposition': 'inline' });
   res.sendFile(privatePath(doc.path));
 });
@@ -255,7 +250,6 @@ adminRouter.patch('/verifications/:id', P('verifications'), idParam, validate({ 
     info_requested: { title: 'More information needed', body: `${b.reason}` },
   }[b.status];
   void notify(v.worker, { type: 'verification', ...msg, link: '/' });
-  void audit(req, `verification.${b.status === 'info_requested' ? 'request_info' : b.status === 'approved' ? 'approve' : 'reject'}`, { type: 'verification', id, label: `Worker ${String(v.worker)} · ${label}` }, b.reason);
   ok(res, { id, status: v.status });
 });
 
@@ -270,19 +264,17 @@ const catBody = z.object({
 });
 // PATCH schemas must not carry .default()s — otherwise omitted fields get reset (zod applies defaults inside .partial()).
 const catPatch = z.object({ name: z.string().trim().min(2).max(40), nameHi: z.string().trim().max(40), icon: z.string().max(30), tint: z.string().max(20), skills: z.array(z.string().trim().min(1).max(40)).max(30), active: z.boolean() }).partial();
-adminRouter.post('/categories', P('categories'), validate({ body: catBody }), async (req, res) => {
+adminRouter.post('/categories', P('categories'), validate({ body: catBody }), async (_req, res) => {
   const b = res.locals.body as z.infer<typeof catBody>;
   const id = b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   if (await Category.exists({ _id: id })) throw new HttpError(409, 'EXISTS', 'Category already exists');
   const c = await Category.create({ _id: id, ...b, sort: await Category.countDocuments() });
-  void audit(req, 'category.create', { type: 'category', id, label: b.name });
   ok(res, { id: c._id, ...b, workerCount: 0 }, 201);
 });
-adminRouter.patch('/categories/:id', P('categories'), validate({ params: z.object({ id: z.string().max(40) }), body: catPatch }), async (req, res) => {
+adminRouter.patch('/categories/:id', P('categories'), validate({ params: z.object({ id: z.string().max(40) }), body: catPatch }), async (_req, res) => {
   const id = (res.locals.params as { id: string }).id;
   const c = await Category.findByIdAndUpdate(id, { $set: res.locals.body }, { returnDocument: 'after' }).lean();
   if (!c) throw HttpError.notFound();
-  void audit(req, 'category.update', { type: 'category', id, label: c.name }, undefined, res.locals.body);
   ok(res, { id: c._id, name: c.name, nameHi: c.nameHi, icon: c.icon, tint: c.tint, skills: c.skills, active: c.active });
 });
 
@@ -295,19 +287,17 @@ const planBody = z.object({
   name: z.string().trim().min(2).max(40), price: z.number().min(0).max(100000), period: z.enum(['month', 'year']),
   features: z.array(z.string().trim().min(1).max(80)).max(12), badge: z.string().trim().max(30).optional(), active: z.boolean(),
 });
-adminRouter.post('/plans', SUPER, validate({ body: planBody }), async (req, res) => {
+adminRouter.post('/plans', SUPER, validate({ body: planBody }), async (_req, res) => {
   const b = res.locals.body as z.infer<typeof planBody>;
   const id = b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   if (await Plan.exists({ _id: id })) throw new HttpError(409, 'EXISTS', 'Plan already exists');
   const p = await Plan.create({ _id: id, ...b, sort: await Plan.countDocuments() });
-  void audit(req, 'plan.create', { type: 'plan', id, label: b.name });
   ok(res, planDto(p.toObject()), 201);
 });
-adminRouter.patch('/plans/:id', P('billing'), validate({ params: z.object({ id: z.string().max(40) }), body: planBody.partial() }), async (req, res) => {
+adminRouter.patch('/plans/:id', P('billing'), validate({ params: z.object({ id: z.string().max(40) }), body: planBody.partial() }), async (_req, res) => {
   const id = (res.locals.params as { id: string }).id;
   const p = await Plan.findByIdAndUpdate(id, { $set: res.locals.body }, { returnDocument: 'after' }).lean();
   if (!p) throw HttpError.notFound();
-  void audit(req, 'plan.update', { type: 'plan', id, label: p.name }, 'Applies to future purchases', res.locals.body);
   ok(res, planDto(p));
 });
 
@@ -319,12 +309,11 @@ adminRouter.get('/subscriptions', P('billing'), LQ, async (_req, res) => {
 });
 
 const grantBody = z.object({ userId: oid, planId: z.string().max(40), reason: reasonBody });
-adminRouter.post('/subscriptions/grant', SUPER, validate({ body: grantBody }), async (req, res) => {
+adminRouter.post('/subscriptions/grant', SUPER, validate({ body: grantBody }), async (_req, res) => {
   const b = res.locals.body as z.infer<typeof grantBody>;
   if (!(await User.exists({ _id: b.userId }))) throw HttpError.notFound('User not found');
   const endAt = await grant(b.userId, b.planId, 'admin_grant');
   void notify(b.userId, { type: 'subscription', title: 'Subscription activated 🎁', body: `Granted by WorkNear. Valid till ${endAt.toLocaleDateString('en-IN')}.`, link: '/subscription' });
-  void audit(req, 'subscription.grant', { type: 'user', id: b.userId, label: `Plan ${b.planId}` }, b.reason);
   ok(res, { endAt: endAt.toISOString() });
 });
 
@@ -338,7 +327,7 @@ adminRouter.get('/transactions', P('billing'), LQ, async (_req, res) => {
   })), q.cursor, q.limit, total));
 });
 
-adminRouter.post('/transactions/:id/refund', SUPER, idParam, validate({ body: z.object({ reason: reasonBody }) }), async (req, res) => {
+adminRouter.post('/transactions/:id/refund', SUPER, idParam, validate({ body: z.object({ reason: reasonBody }) }), async (_req, res) => {
   const id = (res.locals.params as { id: string }).id;
   const p = await Payment.findById(id);
   if (!p || p.status !== 'success' || !p.paymentId) throw HttpError.badRequest('Only successful payments can be refunded');
@@ -348,7 +337,6 @@ adminRouter.post('/transactions/:id/refund', SUPER, idParam, validate({ body: z.
   // Refund ends the paid entitlement immediately.
   await Subscription.updateOne({ user: p.user, source: 'payment' }, { status: 'expired', endAt: new Date() });
   void notify(p.user, { type: 'subscription', title: 'Refund initiated', body: `₹${p.amount} for ${p.planName} will reach your account in 5–7 working days.`, link: '/subscription' });
-  void audit(req, 'payment.refund', { type: 'payment', id, label: `${p.orderId} · ₹${p.amount}` }, (res.locals.body as { reason: string }).reason);
   ok(res, { status: p.status, refundId: p.refundId });
 });
 
@@ -419,7 +407,6 @@ adminRouter.patch('/complaints/:id', P('complaints'), validate({ params: z.objec
   if (b.status && ['in_progress', 'resolved'].includes(b.status)) {
     void notify(c.reporter, { type: 'complaint', title: `Complaint #${c.code} ${b.status === 'resolved' ? 'resolved' : 'in progress'}`, body: b.status === 'resolved' ? c.resolution ?? 'Our team has resolved your complaint.' : 'Our team is looking into it.', link: '/help' });
   }
-  void audit(req, `complaint.${b.action ?? 'update'}`, { type: 'complaint', id: c.code, label: `Complaint #${c.code}` }, b.note ?? b.resolution, b);
   ok(res, (await complaintDtos([c.toObject()]))[0]);
 });
 
@@ -428,7 +415,6 @@ adminRouter.get('/complaints/:id/evidence/:idx', P('complaints'), validate({ par
   const c = await Complaint.findOne({ code: id, ...complaintScope(req) }).lean();
   const rel = c?.evidence[idx];
   if (!rel) throw HttpError.notFound();
-  await audit(req, 'complaint.evidence_view', { type: 'complaint', id });
   res.set('Cache-Control', 'private, no-store');
   res.sendFile(privatePath(rel));
 });
@@ -450,14 +436,13 @@ adminRouter.get('/reviews', P('reviews'), LQ, async (_req, res) => {
   })), q.cursor, q.limit, total));
 });
 
-adminRouter.patch('/reviews/:id', P('reviews'), idParam, validate({ body: z.object({ status: z.enum(['visible', 'hidden']), reason: z.string().trim().max(500).optional() }) }), async (req, res) => {
+adminRouter.patch('/reviews/:id', P('reviews'), idParam, validate({ body: z.object({ status: z.enum(['visible', 'hidden']), reason: z.string().trim().max(500).optional() }) }), async (_req, res) => {
   const id = (res.locals.params as { id: string }).id;
   const b = res.locals.body as { status: 'visible' | 'hidden'; reason?: string };
   if (b.status === 'hidden' && (!b.reason || b.reason.length < 3)) throw HttpError.badRequest('A reason is required');
   const r = await Review.findByIdAndUpdate(id, { status: b.status, hiddenReason: b.status === 'hidden' ? b.reason : undefined, ...(b.status === 'visible' && { reports: 0 }) }, { returnDocument: 'after' }).lean();
   if (!r) throw HttpError.notFound();
   await refreshRating(r.worker);
-  void audit(req, b.status === 'hidden' ? 'review.hide' : 'review.restore', { type: 'review', id, label: `${r.stars}★ review` }, b.reason);
   ok(res, { id, status: r.status });
 });
 
@@ -472,20 +457,17 @@ const bannerBody = z.object({ title: z.string().trim().min(2).max(60), subtitle:
 const bannerPatch = z.object({ title: z.string().trim().min(2).max(60), subtitle: z.string().trim().max(120), tint: z.string().max(80), link: z.union([bannerLink, z.literal('')]), active: z.boolean(), sort: z.number().int() }).partial();
 
 adminRouter.get('/banners', P('cms'), async (_req, res) => ok(res, (await Banner.find().sort({ sort: 1 }).lean()).map(bannerDto)));
-adminRouter.post('/banners', P('cms'), validate({ body: bannerBody }), async (req, res) => {
+adminRouter.post('/banners', P('cms'), validate({ body: bannerBody }), async (_req, res) => {
   const b = await Banner.create(res.locals.body);
-  void audit(req, 'banner.create', { type: 'banner', id: String(b._id), label: b.title });
   ok(res, bannerDto(b.toObject()), 201);
 });
-adminRouter.patch('/banners/:id', P('cms'), idParam, validate({ body: bannerPatch }), async (req, res) => {
+adminRouter.patch('/banners/:id', P('cms'), idParam, validate({ body: bannerPatch }), async (_req, res) => {
   const b = await Banner.findByIdAndUpdate((res.locals.params as { id: string }).id, { $set: res.locals.body }, { returnDocument: 'after' }).lean();
   if (!b) throw HttpError.notFound();
-  void audit(req, 'banner.update', { type: 'banner', id: String(b._id), label: b.title });
   ok(res, bannerDto(b));
 });
-adminRouter.delete('/banners/:id', P('cms'), idParam, async (req, res) => {
-  const b = await Banner.findByIdAndDelete((res.locals.params as { id: string }).id).lean();
-  if (b) void audit(req, 'banner.delete', { type: 'banner', id: String(b._id), label: b.title });
+adminRouter.delete('/banners/:id', P('cms'), idParam, async (_req, res) => {
+  await Banner.findByIdAndDelete((res.locals.params as { id: string }).id);
   res.status(204).end();
 });
 
@@ -493,28 +475,24 @@ const faqDto = (f: { _id: unknown; q: string; a: string; active: boolean; sort: 
 const faqBody = z.object({ q: z.string().trim().min(5).max(200), a: z.string().trim().min(5).max(1500), active: z.boolean().default(true), sort: z.number().int().default(0) });
 const faqPatch = z.object({ q: z.string().trim().min(5).max(200), a: z.string().trim().min(5).max(1500), active: z.boolean(), sort: z.number().int() }).partial();
 adminRouter.get('/faqs', P('cms'), async (_req, res) => ok(res, (await Faq.find().sort({ sort: 1 }).lean()).map(faqDto)));
-adminRouter.post('/faqs', P('cms'), validate({ body: faqBody }), async (req, res) => {
+adminRouter.post('/faqs', P('cms'), validate({ body: faqBody }), async (_req, res) => {
   const f = await Faq.create(res.locals.body);
-  void audit(req, 'faq.create', { type: 'faq', id: String(f._id), label: f.q });
   ok(res, faqDto(f.toObject()), 201);
 });
-adminRouter.patch('/faqs/:id', P('cms'), idParam, validate({ body: faqPatch }), async (req, res) => {
+adminRouter.patch('/faqs/:id', P('cms'), idParam, validate({ body: faqPatch }), async (_req, res) => {
   const f = await Faq.findByIdAndUpdate((res.locals.params as { id: string }).id, { $set: res.locals.body }, { returnDocument: 'after' }).lean();
   if (!f) throw HttpError.notFound();
-  void audit(req, 'faq.update', { type: 'faq', id: String(f._id), label: f.q });
   ok(res, faqDto(f));
 });
-adminRouter.delete('/faqs/:id', P('cms'), idParam, async (req, res) => {
-  const f = await Faq.findByIdAndDelete((res.locals.params as { id: string }).id).lean();
-  if (f) void audit(req, 'faq.delete', { type: 'faq', id: String(f._id), label: f.q });
+adminRouter.delete('/faqs/:id', P('cms'), idParam, async (_req, res) => {
+  await Faq.findByIdAndDelete((res.locals.params as { id: string }).id);
   res.status(204).end();
 });
 
 adminRouter.get('/pages', P('cms'), async (_req, res) => ok(res, (await Page.find().lean()).map((p) => ({ slug: p._id, title: p.title, body: p.body, updatedAt: iso(p.updatedAt as Date) }))));
-adminRouter.put('/pages/:slug', P('cms'), validate({ params: z.object({ slug: z.enum(['terms', 'privacy', 'refund', 'safety']) }), body: z.object({ title: z.string().trim().min(2).max(80), body: z.array(z.string().trim().min(1).max(2000)).min(1).max(50) }) }), async (req, res) => {
+adminRouter.put('/pages/:slug', P('cms'), validate({ params: z.object({ slug: z.enum(['terms', 'privacy', 'refund', 'safety']) }), body: z.object({ title: z.string().trim().min(2).max(80), body: z.array(z.string().trim().min(1).max(2000)).min(1).max(50) }) }), async (_req, res) => {
   const slug = (res.locals.params as { slug: string }).slug;
   const p = await Page.findByIdAndUpdate(slug, { $set: res.locals.body }, { upsert: true, returnDocument: 'after' }).lean();
-  void audit(req, 'page.update', { type: 'page', id: slug, label: p!.title });
   ok(res, { slug, title: p!.title, body: p!.body, updatedAt: iso(p!.updatedAt as Date) });
 });
 
@@ -555,19 +533,12 @@ adminRouter.patch('/settings', P('settings'), validate({ body: settingsBody }), 
   const s = await getSettings();
   // Every open app picks this up instantly (maintenance screen, hidden features) — no polling.
   broadcast('settings:update', publicSettings(s));
-  void audit(req, b.maintenance?.enabled !== undefined ? (b.maintenance.enabled ? 'maintenance.on' : 'maintenance.off') : 'settings.update', { type: 'settings', id: 'app', label: 'Customization settings' }, undefined, set);
   ok(res, { ...publicSettings(s), subscriptionRequiredFor: s.subscriptionRequiredFor, featureKeys: FEATURE_KEYS, updatedAt: iso(s.updatedAt as Date) });
 });
 
 // ======================================================================
-// Audit logs, staff
+// Staff
 // ======================================================================
-adminRouter.get('/audit-logs', SUPER, LQ, async (_req, res) => {
-  const q = res.locals.query as ListQ;
-  const filter: AnyFilter = { ...range(q, 'at'), ...(q.q && { $or: [{ action: new RegExp(escapeRegex(q.q), 'i') }, { target: new RegExp(escapeRegex(q.q), 'i') }, { actorName: new RegExp(escapeRegex(q.q), 'i') }] }) };
-  const [rows, total] = await Promise.all([AuditLog.find(filter).sort({ at: -1 }).skip(q.cursor).limit(q.limit).lean(), AuditLog.countDocuments(filter)]);
-  ok(res, paged(rows.map((l) => ({ id: String(l._id), actor: l.actorName ?? 'system', action: l.action, target: l.target ?? '', reason: l.reason, ip: l.ip, at: iso(l.at as Date)! })), q.cursor, q.limit, total));
-});
 
 const staffDto = (a: { _id: unknown; name: string; email: string; role: string; status: string; mfaSecret?: string | null; lastLoginAt?: Date | null; permissions?: unknown }) =>
   ({ id: String(a._id), name: a.name, email: a.email, role: a.role, status: a.status, mfa: !!a.mfaSecret, lastLoginAt: iso(a.lastLoginAt), permissions: normalizePermissions(a.permissions) });
@@ -583,13 +554,12 @@ const staffRole = z.enum(['super_admin', 'admin', 'support', 'sub_admin']);
 const permsBody = z.partialRecord(z.enum(ADMIN_MODULES), z.partialRecord(z.enum(PERM_ACTIONS), z.boolean())).optional();
 const staffBody = z.object({ name: personName, email: z.email(), password: z.string().min(8).max(100), role: staffRole, permissions: permsBody });
 const hasAnyPerm = (p: ReturnType<typeof normalizePermissions>) => Object.keys(p).length > 0;
-adminRouter.post('/staff', SUPER, validate({ body: staffBody }), async (req, res) => {
+adminRouter.post('/staff', SUPER, validate({ body: staffBody }), async (_req, res) => {
   const b = res.locals.body as z.infer<typeof staffBody>;
   if (await Admin.exists({ email: b.email.toLowerCase() })) throw new HttpError(409, 'EXISTS', 'Email already registered');
   const permissions = b.role === 'sub_admin' ? normalizePermissions(b.permissions) : {};
   if (b.role === 'sub_admin' && !hasAnyPerm(permissions)) throw HttpError.badRequest('Give the sub-admin at least one permission');
   const a = await Admin.create({ name: b.name, email: b.email, role: b.role, permissions, passwordHash: await hashPassword(b.password) });
-  void audit(req, 'staff.create', { type: 'admin', id: String(a._id), label: `${a.name} (${a.role})` });
   ok(res, staffDto(a.toObject()), 201);
 });
 const staffPatch = z.object({ role: staffRole.optional(), status: z.enum(['active', 'disabled']).optional(), resetMfa: z.boolean().optional(), permissions: permsBody });
@@ -605,7 +575,6 @@ adminRouter.patch('/staff/:id', SUPER, idParam, validate({ body: staffPatch }), 
   if (role === 'sub_admin' && !hasAnyPerm(permissions)) throw HttpError.badRequest('Give the sub-admin at least one permission');
   const a = await Admin.findByIdAndUpdate(id, { $set: { role, permissions, ...(b.status && { status: b.status }) }, ...(b.resetMfa && { $unset: { mfaSecret: 1 } }) }, { returnDocument: 'after' }).lean();
   if (!a) throw HttpError.notFound();
-  void audit(req, 'staff.update', { type: 'admin', id, label: a.name }, undefined, b);
   ok(res, staffDto(a));
 });
 
@@ -639,7 +608,6 @@ adminRouter.get('/export/:type', ANY, validate({ params: z.object({ type: z.enum
       id: c.code, category: c.category, target: c.targetType, status: c.status, created: iso(c.createdAt as Date), resolution: c.resolution,
     }));
   }
-  void audit(req, `export.${type}`, { type: 'export', id: type }, undefined, { from: q.from, to: q.to, rows: rows.length });
   res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="worknear-${type}-${new Date().toISOString().slice(0, 10)}.csv"` });
   res.send('﻿' + csv(rows));
 });

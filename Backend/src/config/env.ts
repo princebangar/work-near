@@ -23,7 +23,7 @@ const schema = z.object({
   // Public origin of this API, used to build absolute media URLs (e.g. https://api.worknear.in). Empty = relative /uploads/... paths.
   PUBLIC_URL: str,
 
-  // First super admin — created at boot only while no admin account exists (see lib/bootstrap.ts)
+  // First super admin — created only by `npm run seed:admin` (src/seed-admin.ts), never at boot
   SEED_ADMIN_EMAIL: z.string().default('worknear@admin.com'),
   SEED_ADMIN_PASSWORD: str,
 

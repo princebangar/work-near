@@ -6,7 +6,7 @@ export function applyTheme(mode: ThemeMode) {
   const root = document.documentElement;
   root.dataset.theme = mode;
   root.style.colorScheme = mode;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', mode === 'dark' ? '#0b0d14' : '#4f46e5');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', mode === 'dark' ? '#000000' : '#4f46e5');
 }
 
 /**

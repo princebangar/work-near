@@ -415,7 +415,7 @@ function GrantDialog({ open, onClose, userId, name }: { open: boolean; onClose: 
       open={open}
       onClose={onClose}
       title={`Grant a plan to ${name}`}
-      description="Activates immediately without payment and notifies the user. Recorded in the audit log."
+      description="Activates immediately without payment and notifies the user."
       footer={
         <>
           <Btn tone="ghost" onClick={onClose}>Cancel</Btn>

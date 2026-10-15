@@ -3,7 +3,6 @@ import { Types } from 'mongoose';
 import { z } from 'zod';
 import { HttpError, escapeRegex, logger, ok, paged, validate, type AnyFilter } from '../../lib/core.js';
 import { requirePerm } from '../../middlewares/auth.js';
-import { audit } from '../../lib/audit.js';
 import { emitTo } from '../../lib/socket.js';
 import { sendPush } from '../../lib/fcm.js';
 import { toNotificationDto } from '../../lib/notify.js';
@@ -91,18 +90,16 @@ broadcastRouter.post('/', P, validate({ body: sendBody }), async (req, res) => {
     title: b.title, body: b.body, link: b.link, kind: b.kind, audience: b.audience,
     targetIds: b.audience === 'custom' ? targetIds : [], createdBy: req.admin!.sub, createdByName: req.admin!.name,
   });
-  void audit(req, 'broadcast.send', { type: 'broadcast', id: String(doc._id), label: b.title }, undefined, { audience: b.audience, kind: b.kind, selected: targetIds.length || undefined });
   void deliver(doc._id, b, targetIds); // background
   ok(res, dto(doc.toObject() as BroadcastLean), 202);
 });
 
 /** Recall: removes the history row and the inbox entries it created (pushes already shown on devices can't be unsent). */
-broadcastRouter.delete('/:id', P, validate({ params: z.object({ id: oid }) }), async (req, res) => {
+broadcastRouter.delete('/:id', P, validate({ params: z.object({ id: oid }) }), async (_req, res) => {
   const id = (res.locals.params as { id: string }).id;
   const b = await Broadcast.findByIdAndDelete(id).lean();
   if (!b) throw HttpError.notFound();
-  const r = await Notification.deleteMany({ broadcast: b._id });
-  void audit(req, 'broadcast.delete', { type: 'broadcast', id, label: b.title }, undefined, { inboxRemoved: r.deletedCount });
+  await Notification.deleteMany({ broadcast: b._id });
   res.status(204).end();
 });
 

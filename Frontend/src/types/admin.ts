@@ -229,7 +229,6 @@ export interface SettingsPatch {
 }
 
 // ---------- System ----------
-export interface AuditEntry { id: string; actor: string; action: string; target: string; reason?: string; ip?: string; at: string }
 export type StaffStatus = 'active' | 'disabled';
 export interface AdminStaff { id: string; name: string; email: string; role: AdminRole; status: StaffStatus; mfa: boolean; lastLoginAt?: string; permissions: AdminPermissions }
 export interface StaffInput { name: string; email: string; password: string; role: AdminRole; permissions?: AdminPermissions }

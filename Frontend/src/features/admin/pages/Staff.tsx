@@ -9,10 +9,10 @@ import { ACTIONS, MODULES, copyText, dateTime, isSuper, randomPassword, roleLabe
 import { Btn, ConfirmDialog, DataTable, Drawer, EmptyBlock, ErrorBlock, IconBtn, PageHeader, Pill, SelectField, TextField, type Column } from '../components/kit';
 
 const ROLES: { value: AdminRole; label: string; desc: string }[] = [
-  { value: 'super_admin', label: 'Super admin', desc: 'Everything, including maintenance mode, refunds, plan creation, staff and audit logs.' },
+  { value: 'super_admin', label: 'Super admin', desc: 'Everything, including maintenance mode, refunds, plan creation and staff.' },
   { value: 'admin', label: 'Admin', desc: 'Day-to-day operations: users, verifications, catalog, billing (no refunds), content and feature switches.' },
   { value: 'support', label: 'Support', desc: 'Only complaints assigned to them — can warn and restrict, but not suspend or reassign.' },
-  { value: 'sub_admin', label: 'Sub-admin', desc: 'Only the modules you tick — View / Create / Edit / Delete per module. Never staff, audit logs, refunds or maintenance.' },
+  { value: 'sub_admin', label: 'Sub-admin', desc: 'Only the modules you tick — View / Create / Edit / Delete per module. Never staff, refunds or maintenance.' },
 ];
 
 type Pending = { s: AdminStaff; kind: 'role'; role: AdminRole } | { s: AdminStaff; kind: 'status' } | { s: AdminStaff; kind: 'mfa' } | { s: AdminStaff; kind: 'perms' } | null;
@@ -139,7 +139,7 @@ export function StaffPage() {
         open={pending?.kind === 'status'}
         onClose={close}
         title={pending?.s.status === 'active' ? `Disable ${pending.s.name}?` : `Enable ${pending?.s.name}?`}
-        description={pending?.s.status === 'active' ? 'They can no longer sign in to the admin panel. Their audit history stays.' : 'They can sign in again with their existing password.'}
+        description={pending?.s.status === 'active' ? 'They can no longer sign in to the admin panel.' : 'They can sign in again with their existing password.'}
         confirmLabel={pending?.s.status === 'active' ? 'Disable' : 'Enable'}
         tone={pending?.s.status === 'active' ? 'danger' : 'primary'}
         loading={update.isPending}

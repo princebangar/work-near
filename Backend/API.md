@@ -109,8 +109,8 @@ Razorpay flow on web: load `https://checkout.razorpay.com/v1/checkout.js`, open 
 | POST | `/complaints` | JSON `{ category, description(≥10), targetType?, targetId? }` or multipart with `evidence` files (≤3) |
 
 ## Admin (`/admin`, admin token) — roles: super_admin > admin > support, plus sub_admin
-Available during maintenance. Every mutation writes an audit log (actor, time, reason).
-**sub_admin**: access is per module (dashboard, users, verifications, categories, billing, complaints, reviews, cms, broadcast, settings) and per action — GET = view, POST = create, PATCH/PUT = edit, DELETE = delete (`src/lib/permissions.ts`). Super-only routes (staff, audit logs, maintenance, refunds, plan create, grants) are never available to sub-admins. Login / `/admin/auth/me` return `permissions`.
+Available during maintenance.
+**sub_admin**: access is per module (dashboard, users, verifications, categories, billing, complaints, reviews, cms, broadcast, settings) and per action — GET = view, POST = create, PATCH/PUT = edit, DELETE = delete (`src/lib/permissions.ts`). Super-only routes (staff, maintenance, refunds, plan create, grants) are never available to sub-admins. Login / `/admin/auth/me` return `permissions`.
 | Method | Path | Role | Notes |
 |---|---|---|---|
 | POST | `/admin/auth/login` | – | `{ email, password, otp? }` → `{ token, id, name, email, role, mfaEnabled }`. `MFA_REQUIRED`/`MFA_INVALID` when MFA set |
@@ -123,7 +123,7 @@ Available during maintenance. Every mutation writes an audit log (actor, time, r
 | PATCH | `/admin/users/:id` | admin+ | `{ status: active\|suspended\|deleted, reason }` (deleted = process deletion request, anonymises) |
 | PATCH | `/admin/workers/:userId` | admin+ | `{ restricted, reason }` |
 | GET | `/admin/verifications?status` | admin+ | Paginated `{ id, workerId, workerName, photo, category, locality, type, documents: string[], status, submittedAt, reason, reviewedAt, reviewer }` |
-| GET | `/admin/verifications/:id/documents/:idx` | admin+ | file stream (fetch as blob) — audit-logged |
+| GET | `/admin/verifications/:id/documents/:idx` | admin+ | file stream (fetch as blob) |
 | PATCH | `/admin/verifications/:id` | admin+ | `{ status: approved\|rejected\|info_requested, reason? (required unless approved) }` |
 | GET/POST | `/admin/categories`, PATCH `/admin/categories/:id` | admin+ | `{ name, nameHi, icon, tint, skills[], active }` |
 | GET | `/admin/plans`; POST (super) ; PATCH `/admin/plans/:id` | admin+ | Plan fields |
@@ -142,7 +142,6 @@ Available during maintenance. Every mutation writes an audit log (actor, time, r
 | GET | `/admin/pages`; PUT `/admin/pages/:slug` | admin+ | `{ title, body: string[] }` |
 | GET | `/admin/settings` | admin+ | public settings + `featureKeys`, `updatedAt` |
 | PATCH | `/admin/settings` | admin+ (maintenance: super only) | `{ features?: Partial<Record<FeatureKey,bool>>, maintenance?: {enabled?,title?,message?,eta?}, subscriptionRequiredFor?, radiusOptions?, defaultRadiusKm?, supportEmail?, supportPhone?, appVersion? }` → broadcasts `settings:update` |
-| GET | `/admin/audit-logs?q&from&to` | super | Paginated `{ id, actor, action, target, reason, ip, at }` |
 | GET | `/admin/staff` | any; POST (super) `{ name, email, password, role, permissions? }`; PATCH `/admin/staff/:id` (super) `{ role?, status?, resetMfa?, permissions? }` | | `{ id, name, email, role, status, mfa, lastLoginAt, permissions }` — sub_admin needs ≥1 permission |
 | GET | `/admin/broadcasts` | broadcast | History (paged). POST `{ title, body, link?, kind: announcement|offer, audience: all|customers|workers|custom, targetIds? }` → 202, delivered in background (inbox + push, 500/batch). DELETE `/:id` recalls it from inboxes. GET `/counts`, GET `/recipients?q&role` for the picker |
 | GET | `/admin/export/:type?from&to` | admin+ | type ∈ users, transactions, complaints → CSV (fetch as blob) |

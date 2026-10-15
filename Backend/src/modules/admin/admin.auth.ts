@@ -7,7 +7,6 @@ import { requireAdmin, signAdmin, type AdminRole } from '../../middlewares/auth.
 import { generateSecret, otpauthUrl, verifyTotp } from '../../lib/totp.js';
 import { ipKey, limiter } from '../../lib/limits.js';
 import { hashPassword, verifyPassword } from '../../lib/password.js';
-import { audit } from '../../lib/audit.js';
 import { normalizePermissions } from '../../lib/permissions.js';
 import { Admin } from '../../models/ops.js';
 
@@ -52,7 +51,6 @@ adminAuthRouter.post('/login', loginLimiter, accountLimiter, validate({ body: lo
   if (a.loginHistory.length > 20) a.loginHistory.splice(0, a.loginHistory.length - 20);
   await a.save();
   req.admin = { sub: String(a._id), role: a.role as AdminRole, name: a.name, typ: 'admin' };
-  void audit(req, 'admin.login', { type: 'admin', id: String(a._id), label: a.email });
   ok(res, session(a));
 });
 
@@ -90,7 +88,6 @@ adminAuthRouter.post('/me/mfa/enable', requireAdmin(), validate({ body: z.object
   if (!verifyTotp(p.secret, (res.locals.body as { code: string }).code)) throw HttpError.badRequest('Code did not match, try again', 'MFA_INVALID');
   await Admin.updateOne({ _id: req.admin!.sub }, { mfaSecret: p.secret });
   pending.delete(req.admin!.sub);
-  void audit(req, 'admin.mfa_enable', { type: 'admin', id: req.admin!.sub });
   ok(res, { mfaEnabled: true });
 });
 
@@ -100,6 +97,5 @@ adminAuthRouter.post('/me/password', requireAdmin(), validate({ body: z.object({
   if (!a || !(await verifyPassword(b.current, a.passwordHash))) throw HttpError.badRequest('Current password is wrong');
   a.passwordHash = await hashPassword(b.next);
   await a.save();
-  void audit(req, 'admin.password_change', { type: 'admin', id: req.admin!.sub });
   ok(res, { changed: true });
 });

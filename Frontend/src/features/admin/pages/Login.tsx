@@ -10,7 +10,7 @@ import { Btn, TextField } from '../components/kit';
 
 const POINTS = [
   { icon: BadgeCheck, title: 'Trust first', text: 'Review worker verifications, complaints and reviews in one place.' },
-  { icon: IndianRupee, title: 'Zero commission', text: 'Simple ₹30 / ₹300 plans — refunds and grants with a full audit trail.' },
+  { icon: IndianRupee, title: 'Zero commission', text: 'Simple ₹30 / ₹300 plans — refunds and grants managed from one place.' },
   { icon: SlidersHorizontal, title: 'Instant control', text: 'Feature switches and maintenance mode reach every open app live.' },
 ];
 
@@ -91,7 +91,6 @@ export function AdminLogin() {
             ))}
           </ul>
         </div>
-        <p className="relative mt-12 text-xs text-white/60">Every admin action is recorded in the audit log.</p>
       </aside>
 
       {/* Form */}

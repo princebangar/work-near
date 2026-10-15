@@ -80,25 +80,6 @@ const broadcastSchema = new Schema(
 broadcastSchema.index({ createdAt: -1 });
 export const Broadcast = model('Broadcast', broadcastSchema);
 
-/** Immutable admin action log (SRS 7, 13). */
-const auditLogSchema = new Schema(
-  {
-    actor: { type: Schema.Types.ObjectId, ref: 'Admin' },
-    actorName: String,
-    action: { type: String, required: true },
-    targetType: String,
-    targetId: String,
-    target: String, // human label
-    reason: String,
-    meta: Schema.Types.Mixed,
-    ip: String,
-    at: { type: Date, default: Date.now },
-  },
-  { versionKey: false },
-);
-auditLogSchema.index({ at: -1 });
-export const AuditLog = model('AuditLog', auditLogSchema);
-
 /** Search analytics for the dashboard ("searches today", demand by category). Auto-expires after 90 days. */
 const searchLogSchema = new Schema(
   {

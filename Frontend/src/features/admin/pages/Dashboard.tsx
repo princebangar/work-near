@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import {
-  AlertTriangle, ArrowUpRight, BadgeCheck, ChevronDown, Crown, Download, FileClock, FileCheck2, Info, IndianRupee, LayoutGrid,
+  AlertTriangle, ArrowUpRight, BadgeCheck, ChevronDown, Crown, Download, FileCheck2, Info, IndianRupee, LayoutGrid,
   MessageSquareWarning, MessagesSquare, Newspaper, OctagonAlert, RefreshCw, Search, SlidersHorizontal, UserX, Users, Wrench, type LucideIcon,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui';
@@ -9,7 +9,7 @@ import { useAdminBadges, useAdminKpis, useExport } from '@/api/admin';
 import { useAuth } from '@/store';
 import { cn, inr, num, timeAgo } from '@/lib/format';
 import type { AdminKpis, AlertLevel, ExportType } from '@/types/admin';
-import { isSuper, presetRange, type RangePreset } from '../lib';
+import { presetRange, type RangePreset } from '../lib';
 import { Btn, ErrorBlock, Menu, MenuItem, Panel, Tabs } from '../components/kit';
 import { CategoryDonut, ComplaintStatusRows, RevenueChart, SignupsChart } from '../components/charts';
 
@@ -192,7 +192,6 @@ export function Dashboard() {
 }
 
 function Body({ k }: { k: AdminKpis }) {
-  const role = useAuth((s) => s.admin!.role);
   const { data: badges } = useAdminBadges();
   const links = [
     { to: '/admin/verifications', label: 'Review verifications', icon: BadgeCheck, count: badges?.verifications },
@@ -200,7 +199,6 @@ function Body({ k }: { k: AdminKpis }) {
     { to: '/admin/settings', label: 'Customization settings', icon: SlidersHorizontal },
     { to: '/admin/cms', label: 'Banners, FAQs & legal', icon: Newspaper },
     { to: '/admin/categories', label: 'Service categories', icon: LayoutGrid },
-    ...(isSuper(role) ? [{ to: '/admin/audit', label: 'Audit logs', icon: FileClock }] : []),
   ];
   return (
     <>

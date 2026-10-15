@@ -238,7 +238,7 @@ function ComplaintDrawer({ c, onClose }: { c: AdminComplaint; onClose: () => voi
         {c.targetUserId && (
           <section className="rounded-2xl border border-line p-4">
             <MicroLabel className="mb-1">Action on reported user</MicroLabel>
-            <p className="mb-3 text-xs text-ink-3">{c.targetName} — every action is logged on this complaint and in the audit log.</p>
+            <p className="mb-3 text-xs text-ink-3">{c.targetName} — every action is logged on this complaint.</p>
             <div className="flex flex-wrap gap-2">
               <Btn size="sm" icon={<AlertTriangle size={14} />} onClick={() => setAction('warn')}>Send warning</Btn>
               <Btn size="sm" icon={<EyeOff size={14} />} onClick={() => setAction('restrict')}>Restrict worker</Btn>

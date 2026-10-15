@@ -9,6 +9,8 @@
   },
   "scripts": {
     "dev": "tsx watch --env-file=.env src/server.ts",
+    "seed:admin": "tsx --env-file=.env src/seed-admin.ts",
+    "seed:admin:prod": "node --env-file=.env dist/seed-admin.js",
     "build": "tsc -p tsconfig.json",
     "start": "node --env-file=.env dist/server.js",
     "typecheck": "tsc --noEmit",

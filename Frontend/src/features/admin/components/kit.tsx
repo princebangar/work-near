@@ -606,7 +606,7 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, description, co
   );
 }
 
-/** Asks for a reason (audit-logged server side). Quick-pick presets fill the field. */
+/** Asks for a reason. Quick-pick presets fill the field. */
 export function ReasonDialog({ open, onClose, onConfirm, title, description, confirmLabel = 'Confirm', tone = 'primary', loading, presets, required = true, label = 'Reason', placeholder, children }: {
   open: boolean; onClose: () => void; onConfirm: (reason: string) => void; title: string; description?: ReactNode; confirmLabel?: string;
   tone?: 'primary' | 'danger'; loading?: boolean; presets?: string[]; required?: boolean; label?: string; placeholder?: string; children?: ReactNode;
@@ -656,7 +656,7 @@ export function ReasonDialog({ open, onClose, onConfirm, title, description, con
           rows={3}
           maxLength={500}
           value={reason}
-          placeholder={placeholder ?? 'Visible in the audit log'}
+          placeholder={placeholder ?? 'Write a short reason'}
           onChange={(e) => setReason(e.target.value)}
           error={touched && short ? 'Please add a reason (at least 3 characters)' : undefined}
         />

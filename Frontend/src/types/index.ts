@@ -221,7 +221,6 @@ export interface VerificationRequest {
 export interface AdminComplaint extends Complaint { reporterName: string; targetName: string; assignedTo?: string }
 export interface AdminReview extends Review { workerName: string; reports: number; status: 'visible' | 'hidden' }
 export interface Transaction { id: ID; userName: string; planName: string; amount: number; status: 'success' | 'failed' | 'pending' | 'refunded'; gatewayRef: string; createdAt: string }
-export interface AuditLog { id: ID; actor: string; action: string; target: string; reason?: string; at: string }
 export interface StaffMember { id: ID; name: string; email: string; role: AdminRole; mfa: boolean; lastLoginAt: string }
 
 // ---------- App settings (Admin → Customization Settings) ----------

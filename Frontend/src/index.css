@@ -34,30 +34,30 @@
   --app-max-w: 480px;
 }
 
-/* Dark theme — same indigo brand, deep neutral surfaces. Toggled via <html data-theme="dark"> (lib/theme.ts). */
+/* Dark theme — same indigo brand, pure black / neutral grey surfaces (no blue tint). Toggled via <html data-theme="dark"> (lib/theme.ts). */
 :root[data-theme='dark'] {
   --c-primary: #6366f1;
   --c-primary-600: #4f46e5;
-  --c-primary-soft: #1f2147;
+  --c-primary-soft: #1c1b2e;
   --c-on-primary: #ffffff;
   --c-accent: #f59e0b;
-  --c-bg: #0b0d14;
-  --c-surface: #141722;
-  --c-surface-2: #1b1f2d;
-  --c-surface-3: #242a3b;
-  --c-ink: #e9ebf3;
-  --c-ink-2: #a4abc0;
-  --c-ink-3: #6b7290;
-  --c-line: #262b3c;
+  --c-bg: #000000;
+  --c-surface: #0f0f0f;
+  --c-surface-2: #171717;
+  --c-surface-3: #222222;
+  --c-ink: #f2f2f2;
+  --c-ink-2: #a3a3a3;
+  --c-ink-3: #737373;
+  --c-line: #262626;
   --c-success: #22c55e;
   --c-success-soft: #10291c;
   --c-warning: #f59e0b;
   --c-warning-soft: #2b2211;
   --c-danger: #f87171;
   --c-danger-soft: #361719;
-  --c-frame: #05060a;
-  --c-skel-a: #1b1f2d;
-  --c-skel-b: #242a3b;
+  --c-frame: #000000;
+  --c-skel-a: #171717;
+  --c-skel-b: #222222;
 }
 
 @theme inline {

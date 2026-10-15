@@ -1,5 +1,5 @@
 import {
-  BadgeCheck, CircleUserRound, FileClock, LayoutDashboard, LayoutGrid, Megaphone, MessageSquareWarning, Newspaper, SlidersHorizontal,
+  BadgeCheck, CircleUserRound, LayoutDashboard, LayoutGrid, Megaphone, MessageSquareWarning, Newspaper, SlidersHorizontal,
   Star, UserCog, Users, Wallet, type LucideIcon,
 } from 'lucide-react';
 import type { AdminBadges, AdminModule, AdminPermissions, AdminRole } from '@/types/admin';
@@ -12,7 +12,7 @@ export interface NavItem {
   icon: LucideIcon;
   /** Permission module — visible when the staff member can *view* it (sub-admins: ticked permission). */
   module?: AdminModule;
-  /** Pages outside the module system (staff, audit, account): visible to these roles. */
+  /** Pages outside the module system (staff, account): visible to these roles. */
   roles?: AdminRole[];
   badge?: keyof AdminBadges;
   /** Badge colour: amber for queues, red for problems. */
@@ -24,7 +24,6 @@ export interface NavSection { title: string; items: NavItem[] }
 
 const ALL: AdminRole[] = ['super_admin', 'admin', 'support', 'sub_admin'];
 const ADMINS: AdminRole[] = ['super_admin', 'admin'];
-const SUPER: AdminRole[] = ['super_admin'];
 
 export const NAV: NavSection[] = [
   { title: 'Overview', items: [{ to: '', label: 'Dashboard', icon: LayoutDashboard, module: 'dashboard', keywords: 'home kpi stats charts overview' }] },
@@ -55,7 +54,6 @@ export const NAV: NavSection[] = [
     title: 'System',
     items: [
       { to: 'settings', label: 'Customization Settings', icon: SlidersHorizontal, module: 'settings', keywords: 'maintenance features toggles radius support' },
-      { to: 'audit', label: 'Audit logs', icon: FileClock, roles: SUPER, keywords: 'history activity security' },
       { to: 'staff', label: 'Roles & staff', icon: UserCog, roles: ADMINS, keywords: 'team admins sub-admin permissions mfa' },
       { to: 'account', label: 'My account', icon: CircleUserRound, roles: ALL, keywords: 'profile password mfa 2fa security' },
     ],

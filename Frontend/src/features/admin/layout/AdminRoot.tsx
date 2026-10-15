@@ -22,7 +22,6 @@ const ComplaintsPage = lazy(() => import('../pages/Complaints').then((m) => ({ d
 const ReviewsPage = lazy(() => import('../pages/Reviews').then((m) => ({ default: m.ReviewsPage })));
 const CmsPage = lazy(() => import('../pages/Cms').then((m) => ({ default: m.CmsPage })));
 const SettingsPage = lazy(() => import('../pages/Settings').then((m) => ({ default: m.SettingsPage })));
-const AuditPage = lazy(() => import('../pages/Audit').then((m) => ({ default: m.AuditPage })));
 const StaffPage = lazy(() => import('../pages/Staff').then((m) => ({ default: m.StaffPage })));
 const BroadcastPage = lazy(() => import('../pages/Broadcast').then((m) => ({ default: m.BroadcastPage })));
 const AccountPage = lazy(() => import('../pages/Account').then((m) => ({ default: m.AccountPage })));
@@ -38,7 +37,6 @@ const PAGES: Record<string, LazyExoticComponent<ComponentType>> = {
   cms: CmsPage,
   broadcast: BroadcastPage,
   settings: SettingsPage,
-  audit: AuditPage,
   staff: StaffPage,
   account: AccountPage,
 };

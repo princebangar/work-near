@@ -55,7 +55,9 @@ function PlansTab() {
     <>
       <p className="mb-4 flex items-start gap-2 rounded-2xl border border-primary/20 bg-primary-soft px-4 py-3 text-sm text-ink-2">
         <Info size={16} className="mt-0.5 shrink-0 text-primary" />
-        Price and feature changes apply to <b className="text-ink">future purchases only</b> — existing subscribers keep what they paid for until their plan ends.
+        <span>
+          Price and feature changes apply to <b className="text-ink">future purchases only</b> — existing subscribers keep what they paid for until their plan ends.
+        </span>
       </p>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {plans.isPending

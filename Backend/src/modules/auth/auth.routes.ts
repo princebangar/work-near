@@ -7,7 +7,6 @@ import { ipKey, limiter } from '../../lib/limits.js';
 import { sendOtpSms } from '../../lib/sms.js';
 import { signTokens, verifyRefresh, type Role } from '../../middlewares/auth.js';
 import { Otp, User } from '../../models/user.js';
-import { notify } from '../../lib/notify.js';
 import { userDto } from '../me/me.service.js';
 
 /** Current Terms/Privacy version the user accepts at sign-up (SRS 5.1). Bump when policies change. */
@@ -95,7 +94,6 @@ authRouter.post('/verify-otp', validate({ body: verifyBody }), async (_req, res)
   await e.save();
   if (!user) {
     user = await User.create({ mobile: m, consentVersion: CONSENT_VERSION, consentAt: new Date() });
-    void notify(user._id, { type: 'system', title: 'Welcome to WorkNear 🎉', body: 'Find trusted workers within 5 KM. Zero commission, always.' });
   } else {
     // A pending deletion request is cancelled by logging back in.
     if (user.status === 'deleted_request' || user.status === 'deleted') Object.assign(user, { status: 'active', deletionRequestedAt: undefined });

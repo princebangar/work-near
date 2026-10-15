@@ -1,6 +1,6 @@
 /**
  * Admin-panel permissions.
- *  - super_admin: everything (incl. staff, audit logs, maintenance, refunds, plan creation, grants)
+ *  - super_admin: everything (incl. staff, maintenance, refunds, plan creation, grants)
  *  - admin:       every module below (no super-only actions)
  *  - support:     complaints assigned to them (SRS 4 / AC-12)
  *  - sub_admin:   exactly the modules + actions the super admin ticks (view / create / edit / delete)

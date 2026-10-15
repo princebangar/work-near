@@ -12,8 +12,8 @@ Hyperlocal service marketplace: customers find workers within 5/10/15 KM, chat d
 cd Backend
 npm install
 npm run dev             # http://localhost:5000  (GET /health)
-# On every boot the server builds indexes, the settings row and the first super admin from
-# SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD. No content is pre-seeded — categories, plans, banners, FAQs and
+npm run seed:admin      # ONCE per database: creates the super admin from SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD
+# On every boot the server only builds indexes and the settings row (never an admin). No content is pre-seeded — categories, plans, banners, FAQs and
 # legal pages are all created from the admin panel.
 # Optional local test helpers live in Backend/scripts/ (gitignored): `npm run e2e`, `npm run security:check`.
 
@@ -30,14 +30,14 @@ npm run dev             # http://localhost:5173  (proxies /api, /uploads, /socke
 - **Chat** is REST for writes + Socket.IO for realtime fan-out (`message:new`, `conversation:read`, `notification:new`). Reviews unlock after the worker replies (one per conversation).
 - **Subscriptions**: checkout creates a pending payment; activation only after server-side Razorpay signature verification or signed webhook (idempotent). Without Razorpay keys in dev, a "test gateway" is used.
 - **Admin → Customization Settings**: every feature has a switch (subscriptions, chat, images, reviews, reports, complaints, verification, worker registration, dual role, portfolio, phone sharing, push, Hindi, banners) + **maintenance mode**. Switches are enforced by the API (`403 FEATURE_DISABLED` / `503 MAINTENANCE`) and pushed live to every open app over the socket (`settings:update`). The admin panel keeps working during maintenance.
-- **Files** are stored on local disk for now: public media in `Backend/uploads/` (served at `/uploads`), verification documents & complaint evidence in `Backend/private-uploads/` (admin-only, audit-logged). Swap `Backend/src/lib/upload.ts` for S3/GCS later.
+- **Files** are stored on local disk for now: public media in `Backend/uploads/` (served at `/uploads`), verification documents & complaint evidence in `Backend/private-uploads/` (admin-only). Swap `Backend/src/lib/upload.ts` for S3/GCS later.
 - **Dark mode** everywhere (app + admin) via CSS tokens on `<html data-theme>`; toggling plays a diagonal "paper fold" transition (View Transitions API).
 
 Full API contract: [`Backend/API.md`](Backend/API.md).
 
 ## MongoDB collections
-`users`, `otps` (TTL), `blocks`, `workerprofiles` (2dsphere), `verifications`, `reviews`, `conversations`, `messages`, `plans`, `subscriptions`, `payments`, `categories`, `banners`, `faqs`, `pages`, `settings`, `admins`, `complaints`, `notifications` (TTL 180d), `auditlogs`, `searchlogs` (TTL 90d), `counters`, `pushtokens` (TTL 60d).
+`users`, `otps` (TTL), `blocks`, `workerprofiles` (2dsphere), `verifications`, `reviews`, `conversations`, `messages`, `plans`, `subscriptions`, `payments`, `categories`, `banners`, `faqs`, `pages`, `settings`, `admins`, `complaints`, `notifications` (TTL 180d), `searchlogs` (TTL 90d), `counters`, `pushtokens` (TTL 60d).
 
 ## Deploy notes
 - Frontend (Netlify): set `VITE_API_BASE_URL=https://<api>/api/v1` and `VITE_BACKEND_ORIGIN=https://<api>`.
-- Backend: set `NODE_ENV=production`, `USE_DEFAULT_OTP=false`, SMS India Hub keys, Razorpay keys + webhook secret (`/api/v1/payments/webhook`), `PUBLIC_URL`, and `FRONTEND_URL`/`SOCKET_CORS_ORIGIN` to the site origin. Indexes and base data are created automatically at boot. Use a strong `SEED_ADMIN_PASSWORD`, change it after first login. Running more than one instance behind a load balancer? Set `REDIS_ENABLED=true` + `REDIS_URL` and `TRUST_PROXY` to the number of proxy hops.
+- Backend: set `NODE_ENV=production`, `USE_DEFAULT_OTP=false`, SMS India Hub keys, Razorpay keys + webhook secret (`/api/v1/payments/webhook`), `PUBLIC_URL`, and `FRONTEND_URL`/`SOCKET_CORS_ORIGIN` to the site origin. Indexes and the settings row are created automatically at boot. Run `npm run seed:admin:prod` once (after `npm run build`) with a strong `SEED_ADMIN_PASSWORD` to create the super admin, then change it after first login. Running more than one instance behind a load balancer? Set `REDIS_ENABLED=true` + `REDIS_URL` and `TRUST_PROXY` to the number of proxy hops.

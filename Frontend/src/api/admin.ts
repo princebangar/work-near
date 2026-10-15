@@ -9,7 +9,7 @@ import { ApiError, adminHttp } from '@/lib/http';
 import { toast, useAuth, useSettings } from '@/store';
 import type * as A from '@/types/admin';
 
-type ListName = 'users' | 'verifications' | 'subscriptions' | 'transactions' | 'complaints' | 'reviews' | 'audit' | 'broadcasts' | 'recipients';
+type ListName = 'users' | 'verifications' | 'subscriptions' | 'transactions' | 'complaints' | 'reviews' | 'broadcasts' | 'recipients';
 
 export const ak = {
   root: ['adm'] as const,
@@ -459,8 +459,7 @@ export function useToggleFeature() {
   });
 }
 
-// ---------- Audit, staff ----------
-export const useAuditLogs = (p: A.ListParams) => useList<A.AuditEntry>('audit', '/admin/audit-logs', p, { limit: 30 });
+// ---------- Staff ----------
 
 export const useAdminStaff = (enabled = true) =>
   useQuery({ queryKey: ak.staff, queryFn: ({ signal }) => adminHttp.get<A.AdminStaff[]>('/admin/staff', undefined, signal), staleTime: 5 * 60_000, enabled });

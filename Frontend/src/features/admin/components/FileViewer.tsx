@@ -51,7 +51,7 @@ function FileViewer({ file, onClose }: { file: ViewerFile; onClose: () => void }
       title={file.name}
       description={
         <span className="inline-flex items-center gap-1.5 text-xs">
-          <Lock size={12} /> Private file · this view is recorded in the audit log{file.note ? ` · ${file.note}` : ''}
+          <Lock size={12} /> Private file · visible to admins only{file.note ? ` · ${file.note}` : ''}
         </span>
       }
       footer={
