@@ -10,7 +10,7 @@ import { cn, getDeviceLocation, GpsError } from '@/lib/format';
 import { autocomplete, loadMaps, mapsEnabled, placeLocation, reverseGeocodeDetail, type Suggestion } from '@/lib/maps';
 import type { AddressLabel, SavedAddress } from '@/types';
 
-const brand = () => getComputedStyle(document.documentElement).getPropertyValue('--c-primary').trim() || '#4f46e5';
+const brand = () => getComputedStyle(document.documentElement).getPropertyValue('--c-primary').trim() || '#15803d';
 // Map opens over India until we know where the user is (geographic centre, not a city default).
 const INDIA = { lat: 22.35, lng: 78.67, zoom: 5 };
 

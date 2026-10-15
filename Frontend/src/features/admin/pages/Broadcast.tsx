@@ -109,7 +109,7 @@ export function BroadcastPage() {
         <Panel icon={<span className="grid size-10 place-items-center rounded-xl bg-surface-2 text-ink-2"><Smartphone size={20} /></span>} title="Preview" sub="How it appears on a phone">
           <div className="rounded-2xl bg-surface-2 p-3">
             <div className="flex items-start gap-3 rounded-xl bg-surface p-3 shadow-sm ring-1 ring-line">
-              <img src="/logo.svg" alt="" className="size-9 rounded-lg" />
+              <img src="/favicon.webp" alt="" className="size-9 rounded-lg" />
               <div className="min-w-0 flex-1">
                 <p className="flex items-center justify-between gap-2 text-[11px] text-ink-3"><span className="font-semibold">WorkNear</span><span>now</span></p>
                 <p className="truncate text-sm font-bold text-ink">{f.title.trim() || 'Notification title'}</p>

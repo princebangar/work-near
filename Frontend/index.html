@@ -3,20 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#4f46e5" />
+    <meta name="theme-color" content="#15803d" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="description" content="WorkNear – 5 Km ke andar har kaam ka solution" />
-    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="icon" type="image/webp" href="/favicon.webp" />
+    <link rel="apple-touch-icon" href="/favicon.webp" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <title>WorkNear</title>
-    <!-- Apply saved theme before first paint (no light flash in dark mode). -->
-    <script>try{var m=JSON.parse(localStorage.getItem('wn-theme')||'{}').state?.mode||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=m;document.documentElement.style.colorScheme=m;}catch(e){}</script>
+    <!-- Apply this panel's saved theme before first paint (admin / customer / worker each keep their own). -->
+    <script>try{var h=document.documentElement,a=location.pathname.indexOf('/admin')===0,u=(JSON.parse(localStorage.getItem('wn-auth')||'{}').state||{}).user,s=JSON.parse(localStorage.getItem('wn-theme')||'{}').state||{},k=a?'admin':u&&u.activeRole==='worker'?'worker':'customer',m=(s.modes&&s.modes[k])||s.mode||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');h.dataset.theme=m;h.dataset.panel=a?'admin':'app';h.style.colorScheme=m;}catch(e){}</script>
     <!-- Skeleton styles live in <head> so the React route fallback can reuse the exact same look. -->
     <style>
       .bs{min-height:100dvh;background:#e9ebf3}.bs-f{max-width:480px;margin:0 auto;min-height:100dvh;background:#f5f6fa}
-      .bs-h{height:150px;border-radius:0 0 28px 28px;background:linear-gradient(135deg,#4f46e5,#4338ca)}
+      .bs-h{height:150px;border-radius:0 0 28px 28px;background:linear-gradient(135deg,#15803d,#166534)}
       .bs-k{background:linear-gradient(90deg,#e3e6ee 25%,#eef0f5 45%,#e3e6ee 65%) 0 0/200% 100%;animation:bsh 1.2s linear infinite;border-radius:14px}
       .bs-p{padding:20px 16px;display:grid;gap:16px}.bs-g{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
       @keyframes bsh{from{background-position:150% 0}to{background-position:-50% 0}}

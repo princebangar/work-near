@@ -99,7 +99,7 @@ export function MaintenanceScreen() {
   };
   return (
     <div className="pt-safe pb-safe relative flex min-h-dvh flex-col overflow-hidden bg-surface">
-      <div className="relative overflow-hidden rounded-b-[36px] bg-gradient-to-br from-primary via-primary to-violet-500 px-6 pt-14 pb-24 text-white">
+      <div className="relative overflow-hidden rounded-b-[36px] bg-gradient-to-br from-primary via-primary to-primary-2 px-6 pt-14 pb-24 text-white">
         <div className="absolute -top-20 -right-16 size-64 rounded-full bg-white/10" />
         <div className="absolute -bottom-24 -left-10 size-56 rounded-full bg-white/10" />
         {TOOLS.map(({ I, c }, i) => (

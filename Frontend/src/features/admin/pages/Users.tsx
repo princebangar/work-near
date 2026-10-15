@@ -12,7 +12,7 @@ import { cn, date, inr, num, timeAgo } from '@/lib/format';
 import type { AdminUserDetail, AdminUserRow } from '@/types/admin';
 import { USER_STATUS_LABEL, VERIFICATION_TYPE_LABEL, clean, dateTime, human, isSuper, toneOf, useDebounced } from '../lib';
 import {
-  Btn, ConfirmDialog, DataTable, DateRangeField, Dialog, Drawer, EmptyBlock, ErrorBlock, FilterChips, KeyVals, LoadMore, MicroLabel, PageHeader,
+  Btn, ConfirmDialog, DataTable, DateRangeField, Dialog, Drawer, EmptyBlock, ErrorBlock, FilterChips, IconBtn, KeyVals, LoadMore, MicroLabel, PageHeader,
   Pill, ReasonDialog, SearchField, SelectField, TextAreaField, Toolbar, type Column,
 } from '../components/kit';
 
@@ -81,6 +81,17 @@ export function UsersPage() {
     },
     { key: 'joined', header: 'Joined', cell: (u) => <span className="whitespace-nowrap text-ink-2">{date(u.joinedAt)}</span> },
     { key: 'active', header: 'Last active', cell: (u) => <span className="whitespace-nowrap text-ink-2">{u.lastActiveAt ? timeAgo(u.lastActiveAt) : '—'}</span> },
+    {
+      key: 'action',
+      header: 'Action',
+      align: 'right',
+      mobile: 'hide',
+      cell: (u) => (
+        <IconBtn label={`View ${u.name}`} onClick={(e) => { e.stopPropagation(); set({ user: u.id }); }} className="ml-auto text-primary hover:bg-primary-soft hover:text-primary">
+          <Eye size={17} />
+        </IconBtn>
+      ),
+    },
   ];
 
   return (

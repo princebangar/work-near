@@ -28,8 +28,8 @@ self.addEventListener('push', (event) => {
       }
       return self.registration.showNotification(title, {
         body,
-        icon: '/logo.svg',
-        badge: '/logo.svg',
+        icon: '/favicon.webp',
+        badge: '/favicon.webp',
         tag: payload.fcmMessageId || undefined,
         data: { link },
       });

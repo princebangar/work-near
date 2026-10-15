@@ -138,7 +138,7 @@ export function TabsLayout() {
               key={to}
               to={to}
               replace={i === active}
-              className={cn('relative z-10 flex h-14 flex-1 touch-manipulation flex-col items-center justify-center gap-1 transition-colors duration-300', i === active ? 'text-primary dark:text-indigo-300' : 'text-ink-2')}
+              className={cn('relative z-10 flex h-14 flex-1 touch-manipulation flex-col items-center justify-center gap-1 transition-colors duration-300', i === active ? 'text-primary' : 'text-ink-2')}
             >
               <span className="relative">
                 <I size={22} strokeWidth={i === active ? 2.4 : 2} className={cn('transition-transform duration-300', i === active && 'scale-110')} />

@@ -115,7 +115,7 @@ function AdminShell({ role }: { role: AdminRole }) {
 
 export function PageSkeleton() {
   return (
-    <div aria-busy="true" aria-label="Loading">
+    <div aria-busy="true" aria-label="Loading" className="skel-wait">
       <Skeleton className="mb-2 h-4 w-28" />
       <Skeleton className="mb-6 h-8 w-64" />
       <div className="mb-4 flex gap-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-8 w-24 rounded-full" />)}</div>

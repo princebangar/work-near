@@ -1,12 +1,29 @@
 import { flushSync } from 'react-dom';
-import { useTheme, type ThemeMode } from '@/store';
+import { useAuth, useTheme, type ThemeMode, type ThemeScope } from '@/store';
 
-/** Writes the theme onto <html> (CSS tokens switch on [data-theme]) and the browser chrome colour. */
+/** Admin panel, or the signed-in user's active role in the app (worker / customer). */
+export const currentThemeScope = (): ThemeScope =>
+  location.pathname.startsWith('/admin') ? 'admin' : useAuth.getState().user?.activeRole === 'worker' ? 'worker' : 'customer';
+
+/**
+ * Writes the theme onto <html> (CSS tokens switch on [data-theme]; [data-panel] picks the admin indigo vs the app green)
+ * and the browser chrome colour.
+ */
 export function applyTheme(mode: ThemeMode) {
   const root = document.documentElement;
+  const admin = useTheme.getState().scope === 'admin';
   root.dataset.theme = mode;
+  root.dataset.panel = admin ? 'admin' : 'app';
   root.style.colorScheme = mode;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', mode === 'dark' ? '#000000' : '#4f46e5');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', mode === 'dark' ? '#000000' : admin ? '#4f46e5' : '#15803d');
+}
+
+/** Re-applies the right panel's saved mode — on boot, admin ↔ app navigation and customer ↔ worker switch. */
+export function syncThemeScope() {
+  const scope = currentThemeScope();
+  const t = useTheme.getState();
+  if (t.scope !== scope) t.setScope(scope);
+  applyTheme(useTheme.getState().mode);
 }
 
 /**
@@ -32,5 +49,8 @@ export function toggleTheme(variant: ThemeTransition = 'fade') {
   vt.finished.finally(() => document.documentElement.classList.remove(cls));
 }
 
-// Apply the persisted theme before first paint of React (called from main.tsx).
-export const initTheme = () => applyTheme(useTheme.getState().mode);
+// Apply the right panel's saved theme before React paints, then follow customer <-> worker switches (called from main.tsx).
+export function initTheme() {
+  syncThemeScope();
+  useAuth.subscribe((s, prev) => s.user?.activeRole !== prev.user?.activeRole && syncThemeScope());
+}

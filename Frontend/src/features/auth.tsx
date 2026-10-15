@@ -74,7 +74,7 @@ function AuthHero({ title, sub, back }: { title: string; sub: string; back?: boo
     { I: Paintbrush, c: 'bottom-[34%] right-[8%] rotate-[-8deg]' },
   ];
   return (
-    <div className="pt-safe relative overflow-hidden bg-gradient-to-br from-primary via-primary to-violet-500 px-6 pb-14 text-white">
+    <div className="pt-safe relative overflow-hidden bg-gradient-to-br from-primary via-primary to-primary-2 px-6 pb-14 text-white">
       <div className="absolute -top-20 -right-16 size-64 rounded-full bg-white/10" />
       <div className="absolute -bottom-24 -left-10 size-56 rounded-full bg-white/10" />
       {floaters.map(({ I, c }, i) => (

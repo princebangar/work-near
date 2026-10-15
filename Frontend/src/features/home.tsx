@@ -69,9 +69,9 @@ function HomeHeader() {
 // from-indigo-600 to-violet-500 from-emerald-600 to-teal-500 from-amber-500 to-orange-500 from-violet-600 to-purple-500
 // from-blue-600 to-cyan-500 from-sky-500 to-blue-600 from-rose-500 to-pink-500 from-pink-500 to-rose-500 from-teal-600 to-emerald-500
 // from-orange-500 to-red-500 from-fuchsia-600 to-pink-500 from-cyan-600 to-sky-500 from-slate-700 to-slate-900 from-green-600 to-emerald-500
-// from-purple-600 to-indigo-500 from-red-500 to-orange-500 from-lime-500 to-green-600 from-yellow-500 to-amber-600 from-primary to-violet-500
+// from-purple-600 to-indigo-500 from-red-500 to-orange-500 from-lime-500 to-green-600 from-yellow-500 to-amber-600 from-primary to-primary-2
 const tintProps = (tint: string) =>
-  /^(#|rgb|hsl)/.test(tint.trim()) ? { className: '', style: { background: tint } } : { className: cn('bg-gradient-to-br', tint || 'from-primary to-violet-500'), style: undefined };
+  /^(#|rgb|hsl)/.test(tint.trim()) ? { className: '', style: { background: tint } } : { className: cn('bg-gradient-to-br', tint || 'from-primary to-primary-2'), style: undefined };
 
 function BannerCard({ b }: { b: Banner }) {
   const nav = useNavigate();

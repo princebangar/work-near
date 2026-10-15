@@ -26,7 +26,7 @@ function loadRazorpay(): Promise<RazorpayCtor> {
     document.head.appendChild(s);
   }));
 }
-const brandColor = () => getComputedStyle(document.documentElement).getPropertyValue('--c-primary').trim() || '#4f46e5';
+const brandColor = () => getComputedStyle(document.documentElement).getPropertyValue('--c-primary').trim() || '#15803d';
 
 type Result = { ok: boolean; sub?: Subscription; orderId: string; message?: string };
 const payTone: Record<PaymentStatus, Tone> = { success: 'success', failed: 'danger', pending: 'warning', refunded: 'neutral' };

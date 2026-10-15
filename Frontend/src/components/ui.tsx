@@ -248,7 +248,7 @@ export function Toaster() {
 
 /** Route-loading skeleton — same markup/classes as the boot skeleton in index.html, so refresh shows one continuous skeleton. */
 export const Spinner = () => (
-  <div aria-busy="true">
+  <div aria-busy="true" className="skel-wait">
     <div className="bs-h" />
     <div className="bs-p">
       <div className="bs-k" style={{ height: 128 }} />

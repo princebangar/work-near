@@ -5,7 +5,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/http';
 import { Toaster } from '@/components/ui';
 import { AppBootstrap } from '@/components/system';
-import { initTheme } from '@/lib/theme';
+import { initTheme, syncThemeScope } from '@/lib/theme';
 import { AppFrame, RequireAuth, TabsLayout } from '@/layouts/AppLayout';
 import './index.css';
 
@@ -78,6 +78,7 @@ const router = createBrowserRouter([
 ]);
 
 initTheme();
+router.subscribe(syncThemeScope); // admin ↔ app navigation switches panel theme
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -88,3 +89,12 @@ createRoot(document.getElementById('root')!).render(
     </QueryClientProvider>
   </StrictMode>,
 );
+
+// After the first screen has finished loading (no skeleton left on it), later skeletons wait 250 ms before showing,
+// so instant / cached data never flashes a skeleton (see `html.booted` in index.css).
+const bootedAt = Date.now();
+const markBooted = setInterval(() => {
+  if (document.querySelector('.skeleton, .skel-wait, .bs') && Date.now() - bootedAt < 10_000) return; // cap: a stuck skeleton never blocks it
+  document.documentElement.classList.add('booted');
+  clearInterval(markBooted);
+}, 200);

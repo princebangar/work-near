@@ -8,7 +8,7 @@ import { AlertTriangle, CalendarRange, ChevronDown, Inbox, Loader2, RotateCcw, S
 import { Skeleton } from '@/components/ui';
 import { cn, num } from '@/lib/format';
 import { errText } from '@/api/admin';
-import type { PillTone } from '../lib';
+import { presetRange, type PillTone, type RangePreset } from '../lib';
 
 // ======================================================================
 // Layout pieces
@@ -284,18 +284,86 @@ export function SearchField({ value, onChange, placeholder = 'Search…', classN
   );
 }
 
+const RANGE_PRESETS: { value: RangePreset; label: string }[] = [
+  { value: 'all', label: 'All time' },
+  { value: '7d', label: 'Last 7 days' },
+  { value: '30d', label: 'Last 30 days' },
+  { value: 'month', label: 'This month' },
+];
+const shortDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+
+/** Compact date filter: one button ("All dates" / "1 Oct – 15 Oct") that opens presets + From / To inputs. */
 export function DateRangeField({ from, to, onChange, className }: { from?: string; to?: string; onChange: (r: { from?: string; to?: string }) => void; className?: string }) {
-  const input = 'h-10 min-w-0 flex-1 bg-transparent px-1 text-sm text-ink outline-none';
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => !root.current?.contains(e.target as Node) && setOpen(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        btn.current?.focus();
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+  const active = !!(from || to);
+  const label = !active ? 'All dates' : from && to ? `${shortDate(from)} – ${shortDate(to)}` : from ? `From ${shortDate(from)}` : `Till ${shortDate(to!)}`;
+  const preset = RANGE_PRESETS.find((p) => { const r = presetRange(p.value); return r.from === from && r.to === to; })?.value;
+  const input = cn(fieldBase, 'h-9 border-line px-2.5 text-sm');
   return (
-    <div className={cn('flex h-10 w-full items-center gap-1 rounded-xl border border-line bg-surface pr-1 pl-3 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15 sm:w-auto', className)}>
-      <CalendarRange size={16} className="shrink-0 text-ink-3" />
-      <input type="date" aria-label="From date" value={from ?? ''} max={to || undefined} onChange={(e) => onChange({ from: e.target.value || undefined, to })} className={input} />
-      <span className="text-ink-3">–</span>
-      <input type="date" aria-label="To date" value={to ?? ''} min={from || undefined} onChange={(e) => onChange({ from, to: e.target.value || undefined })} className={input} />
-      {(from || to) && (
-        <button type="button" aria-label="Clear dates" onClick={() => onChange({})} className="grid size-7 shrink-0 place-items-center rounded-md text-ink-3 hover:bg-surface-2 hover:text-ink">
-          <X size={14} />
+    <div ref={root} className={cn('relative', className)}>
+      <div className={cn('flex h-10 items-center rounded-xl border bg-surface transition', active ? 'border-primary/40' : 'border-line hover:border-ink-3/50')}>
+        <button
+          ref={btn}
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className="flex h-full items-center gap-2 pr-2 pl-3 text-sm font-semibold whitespace-nowrap text-ink"
+        >
+          <CalendarRange size={16} className={active ? 'text-primary' : 'text-ink-3'} />
+          {label}
+          {!active && <ChevronDown size={14} className="text-ink-3" />}
         </button>
+        {active && (
+          <button type="button" aria-label="Clear dates" onClick={() => onChange({})} className="mr-1.5 grid size-7 place-items-center rounded-md text-ink-3 hover:bg-surface-2 hover:text-ink">
+            <X size={14} />
+          </button>
+        )}
+      </div>
+      {open && (
+        <div role="dialog" aria-label="Filter by date" className="adm-pop absolute top-full right-0 z-40 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-line bg-surface p-3 text-ink shadow-xl shadow-black/10">
+          <div className="grid grid-cols-2 gap-1.5">
+            {RANGE_PRESETS.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                aria-pressed={preset === p.value}
+                onClick={() => { onChange(presetRange(p.value)); setOpen(false); }}
+                className={cn('h-8 rounded-lg border text-[13px] font-semibold transition', preset === p.value ? 'border-primary bg-primary-soft text-primary' : 'border-line text-ink-2 hover:text-ink')}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 border-t border-line pt-3">
+            <label className="text-[11px] font-bold tracking-wide text-ink-3 uppercase">
+              From
+              <input type="date" value={from ?? ''} max={to || undefined} onChange={(e) => onChange({ from: e.target.value || undefined, to })} className={cn(input, 'mt-1 font-normal tracking-normal normal-case')} />
+            </label>
+            <label className="text-[11px] font-bold tracking-wide text-ink-3 uppercase">
+              To
+              <input type="date" value={to ?? ''} min={from || undefined} onChange={(e) => onChange({ from, to: e.target.value || undefined })} className={cn(input, 'mt-1 font-normal tracking-normal normal-case')} />
+            </label>
+          </div>
+        </div>
       )}
     </div>
   );

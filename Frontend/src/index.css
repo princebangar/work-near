@@ -8,9 +8,11 @@
  * Keep component code using semantic names (primary, surface, ink...) only.
  */
 :root {
-  --c-primary: #4f46e5;
-  --c-primary-600: #4338ca;
-  --c-primary-soft: #eef2ff;
+  /* Customer + worker app brand: deep WorkNear green (white text stays readable). Admin keeps indigo — see [data-panel='admin'] below. */
+  --c-primary: #15803d;
+  --c-primary-600: #166534;
+  --c-primary-2: #22c55e;
+  --c-primary-soft: #ecfdf3;
   --c-on-primary: #ffffff;
   --c-accent: #f59e0b;
   --c-bg: #f5f6fa;
@@ -34,11 +36,12 @@
   --app-max-w: 480px;
 }
 
-/* Dark theme — same indigo brand, pure black / neutral grey surfaces (no blue tint). Toggled via <html data-theme="dark"> (lib/theme.ts). */
+/* Dark theme — same brand colour, pure black / neutral grey surfaces (no blue tint). Toggled via <html data-theme="dark"> (lib/theme.ts). */
 :root[data-theme='dark'] {
-  --c-primary: #6366f1;
-  --c-primary-600: #4f46e5;
-  --c-primary-soft: #1c1b2e;
+  --c-primary: #16a34a;
+  --c-primary-600: #15803d;
+  --c-primary-2: #22c55e;
+  --c-primary-soft: #0d2416;
   --c-on-primary: #ffffff;
   --c-accent: #f59e0b;
   --c-bg: #000000;
@@ -60,9 +63,24 @@
   --c-skel-b: #222222;
 }
 
+/* Admin panel keeps the indigo brand (<html data-panel="admin">, set in lib/theme.ts). */
+:root[data-panel='admin'] {
+  --c-primary: #4f46e5;
+  --c-primary-600: #4338ca;
+  --c-primary-2: #8b5cf6;
+  --c-primary-soft: #eef2ff;
+}
+:root[data-panel='admin'][data-theme='dark'] {
+  --c-primary: #6366f1;
+  --c-primary-600: #4f46e5;
+  --c-primary-2: #8b5cf6;
+  --c-primary-soft: #1c1b2e;
+}
+
 @theme inline {
   --color-primary: var(--c-primary);
   --color-primary-600: var(--c-primary-600);
+  --color-primary-2: var(--c-primary-2);
   --color-primary-soft: var(--c-primary-soft);
   --color-on-primary: var(--c-on-primary);
   --color-accent: var(--c-accent);
@@ -120,6 +138,15 @@
   background: linear-gradient(90deg, var(--c-skel-a) 25%, var(--c-skel-b) 45%, var(--c-skel-a) 65%) 0 0 / 200% 100%;
   animation: shimmer 1.2s linear infinite;
 }
+
+/*
+ * No skeleton flash on fast loads: once the app has booted (<html class="booted">, set in main.tsx) every skeleton
+ * stays invisible for 250 ms and only fades in if the data is still loading. The first load after a refresh
+ * still shows the skeleton instantly (continuous with the boot skeleton in index.html).
+ */
+@keyframes skel-reveal { from { opacity: 0; } to { opacity: 1; } }
+html.booted .skeleton { animation: skel-reveal 0.15s ease-out 0.25s both, shimmer 1.2s linear infinite; }
+html.booted .skel-wait { animation: skel-reveal 0.15s ease-out 0.25s both; }
 
 /*
  * Desktop/laptop: 1:1 mobile UI looks oversized (esp. with 125% Windows scaling).

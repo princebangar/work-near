@@ -126,8 +126,37 @@ export const featureOn = (k: FeatureKey) => useSettings.getState().settings?.fea
 
 // ---------- Theme ----------
 export type ThemeMode = 'light' | 'dark';
-interface ThemeState { mode: ThemeMode; setMode: (m: ThemeMode) => void }
+/** Each panel keeps its own light/dark choice: admin panel, customer app, worker app. */
+export type ThemeScope = 'admin' | 'customer' | 'worker';
+interface ThemeState {
+  modes: Record<ThemeScope, ThemeMode>;
+  scope: ThemeScope;
+  /** Mode of the current scope. */
+  mode: ThemeMode;
+  setMode: (m: ThemeMode) => void;
+  setScope: (s: ThemeScope) => void;
+}
 const systemMode = (): ThemeMode => (typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+const initialModes = (): Record<ThemeScope, ThemeMode> => { const m = systemMode(); return { admin: m, customer: m, worker: m }; };
 export const useTheme = create<ThemeState>()(
-  persist((set) => ({ mode: systemMode(), setMode: (mode) => set({ mode }) }), { name: 'wn-theme', storage }),
+  persist(
+    (set) => ({
+      modes: initialModes(),
+      scope: 'customer',
+      mode: systemMode(),
+      setMode: (mode) => set((s) => ({ mode, modes: { ...s.modes, [s.scope]: mode } })),
+      setScope: (scope) => set((s) => ({ scope, mode: s.modes[scope] })),
+    }),
+    {
+      name: 'wn-theme',
+      storage,
+      version: 1,
+      partialize: (s) => ({ modes: s.modes }),
+      // v0 stored one shared { mode } — start every panel from that choice.
+      migrate: (old, v) => (v === 0 && old && typeof old === 'object' && 'mode' in old
+        ? { modes: { admin: (old as { mode: ThemeMode }).mode, customer: (old as { mode: ThemeMode }).mode, worker: (old as { mode: ThemeMode }).mode } }
+        : (old as { modes: Record<ThemeScope, ThemeMode> })),
+      merge: (p, cur) => { const modes = { ...cur.modes, ...(p as { modes?: Partial<Record<ThemeScope, ThemeMode>> })?.modes }; return { ...cur, modes, mode: modes[cur.scope] }; },
+    },
+  ),
 );
