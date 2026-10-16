@@ -52,15 +52,9 @@ export async function autocomplete(input: string): Promise<Suggestion[]> {
   const maps = await loadMaps();
   const P = maps.places;
   session ??= new P.AutocompleteSessionToken();
-  try {
-    // Places API (New)
-    const { suggestions } = await P.AutocompleteSuggestion.fetchAutocompleteSuggestions({ input, sessionToken: session, includedRegionCodes: ['in'] });
-    return suggestions.map((s: any) => ({ id: s.placePrediction.placeId, main: s.placePrediction.mainText.text, secondary: s.placePrediction.secondaryText?.text ?? '' }));
-  } catch {
-    // Legacy Places fallback
-    const r = await new P.AutocompleteService().getPlacePredictions({ input, sessionToken: session, componentRestrictions: { country: 'in' } });
-    return (r?.predictions ?? []).map((p: any) => ({ id: p.place_id, main: p.structured_formatting.main_text, secondary: p.structured_formatting.secondary_text ?? '' }));
-  }
+  // Places API (New)
+  const { suggestions } = await P.AutocompleteSuggestion.fetchAutocompleteSuggestions({ input, sessionToken: session, includedRegionCodes: ['in'] });
+  return suggestions.map((s: any) => ({ id: s.placePrediction.placeId, main: s.placePrediction.mainText.text, secondary: s.placePrediction.secondaryText?.text ?? '' }));
 }
 
 export async function placeLocation(placeId: string, label: string): Promise<Place> {
