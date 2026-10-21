@@ -15,9 +15,9 @@ export const CONSENT_VERSION = '2026-10-01';
 // Keyed hash: a leaked `otps` collection can't be brute-forced offline (6 digits = only 1M possibilities).
 const hash = (code: string, mobile: string) => createHmac('sha256', env.JWT_REFRESH_SECRET).update(`otp:${mobile}:${code}`).digest('hex');
 
-/** Default OTP for local testing (USE_DEFAULT_OTP) or a single QA number (USE_DEFAULT_TEST_PHONE). Never in production. */
+/** Default OTP for testing (USE_DEFAULT_OTP) or a single QA number (USE_DEFAULT_TEST_PHONE). Controlled only by .env — works in dev and production alike. */
 const usesDefaultOtp = (mobile: string) =>
-  !env.isProd && (env.USE_DEFAULT_OTP || (env.USE_DEFAULT_TEST_PHONE && mobile === env.DEFAULT_TEST_PHONE));
+  env.USE_DEFAULT_OTP || (env.USE_DEFAULT_TEST_PHONE && mobile === env.DEFAULT_TEST_PHONE);
 
 const mobile = z.string().regex(/^[6-9]\d{9}$/, 'Enter a valid 10-digit Indian mobile number');
 const authLimiter = limiter({

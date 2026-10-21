@@ -103,7 +103,8 @@ const fatal: string[] = [];
 if (e.REDIS_ENABLED && !e.REDIS_URL) fatal.push('REDIS_URL is required when REDIS_ENABLED=true');
 if (e.NODE_ENV === 'production') {
   // Production must never boot half-configured or with test shortcuts left on.
-  if (e.USE_DEFAULT_OTP) fatal.push('USE_DEFAULT_OTP must be false in production');
+  // Allowed (e.g. before SMS / DLT is live) but loud: with it on, anyone can log in to any number with DEFAULT_OTP.
+  if (e.USE_DEFAULT_OTP) console.warn(`WARNING: USE_DEFAULT_OTP=true in production — every number accepts OTP ${e.DEFAULT_OTP}. Set it to false once SMS is live.`);
   if (!e.MONGODB_URI) fatal.push('MONGODB_URI is required in production');
   if (e.JWT_ACCESS_SECRET === e.JWT_REFRESH_SECRET) fatal.push('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different');
   if (e.ADMIN_REGISTRATION_CODE && e.ADMIN_REGISTRATION_CODE.length < 16) fatal.push('ADMIN_REGISTRATION_CODE must be at least 16 characters (or empty)');
