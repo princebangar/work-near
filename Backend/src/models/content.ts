@@ -7,6 +7,7 @@ const categorySchema = new Schema(
     name: { type: String, required: true, trim: true },
     nameHi: { type: String, default: '' },
     icon: { type: String, default: 'briefcase' },
+    image: { type: String, default: '' }, // optional uploaded picture (/uploads/categories/…); shown instead of the icon
     tint: { type: String, default: '#e0e7ff' },
     skills: { type: [String], default: [] },
     active: { type: Boolean, default: true },

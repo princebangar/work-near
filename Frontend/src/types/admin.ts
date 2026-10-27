@@ -122,6 +122,8 @@ export interface AdminCategory {
   name: string;
   nameHi: string;
   icon: string;
+  /** Uploaded picture URL; '' = show the icon instead. */
+  image: string;
   tint: string;
   skills: string[];
   active: boolean;

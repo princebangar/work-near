@@ -259,11 +259,11 @@ adminRouter.patch('/verifications/:id', P('verifications'), idParam, validate({ 
 adminRouter.get('/categories', P('categories'), async (_req, res) => ok(res, await categoriesWithCounts({})));
 
 const catBody = z.object({
-  name: z.string().trim().min(2).max(40), nameHi: z.string().trim().max(40).default(''), icon: z.string().max(30).default('briefcase'),
+  name: z.string().trim().min(2).max(40), nameHi: z.string().trim().max(40).default(''), icon: z.string().max(30).default('briefcase'), image: z.string().max(300).default(''),
   tint: z.string().max(20).default('#e0e7ff'), skills: z.array(z.string().trim().min(1).max(40)).max(30).default([]), active: z.boolean().default(true),
 });
 // PATCH schemas must not carry .default()s — otherwise omitted fields get reset (zod applies defaults inside .partial()).
-const catPatch = z.object({ name: z.string().trim().min(2).max(40), nameHi: z.string().trim().max(40), icon: z.string().max(30), tint: z.string().max(20), skills: z.array(z.string().trim().min(1).max(40)).max(30), active: z.boolean() }).partial();
+const catPatch = z.object({ name: z.string().trim().min(2).max(40), nameHi: z.string().trim().max(40), icon: z.string().max(30), image: z.string().max(300), tint: z.string().max(20), skills: z.array(z.string().trim().min(1).max(40)).max(30), active: z.boolean() }).partial();
 adminRouter.post('/categories', P('categories'), validate({ body: catBody }), async (_req, res) => {
   const b = res.locals.body as z.infer<typeof catBody>;
   const id = b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -273,9 +273,12 @@ adminRouter.post('/categories', P('categories'), validate({ body: catBody }), as
 });
 adminRouter.patch('/categories/:id', P('categories'), validate({ params: z.object({ id: z.string().max(40) }), body: catPatch }), async (_req, res) => {
   const id = (res.locals.params as { id: string }).id;
-  const c = await Category.findByIdAndUpdate(id, { $set: res.locals.body }, { returnDocument: 'after' }).lean();
+  const body = res.locals.body as z.infer<typeof catPatch>;
+  const before = body.image !== undefined ? await Category.findById(id, { image: 1 }).lean() : null;
+  const c = await Category.findByIdAndUpdate(id, { $set: body }, { returnDocument: 'after' }).lean();
   if (!c) throw HttpError.notFound();
-  ok(res, { id: c._id, name: c.name, nameHi: c.nameHi, icon: c.icon, tint: c.tint, skills: c.skills, active: c.active });
+  if (before?.image && before.image !== c.image) removePublic(before.image); // replaced or removed → drop the old file
+  ok(res, { id: c._id, name: c.name, nameHi: c.nameHi, icon: c.icon, image: c.image ?? '', tint: c.tint, skills: c.skills, active: c.active });
 });
 
 // ======================================================================
@@ -494,6 +497,12 @@ adminRouter.put('/pages/:slug', P('cms'), validate({ params: z.object({ slug: z.
   const slug = (res.locals.params as { slug: string }).slug;
   const p = await Page.findByIdAndUpdate(slug, { $set: res.locals.body }, { upsert: true, returnDocument: 'after' }).lean();
   ok(res, { slug, title: p!.title, body: p!.body, updatedAt: iso(p!.updatedAt as Date) });
+});
+
+// Category picture — uploaded when the admin saves the category form, then saved as its image URL.
+adminRouter.post('/uploads/category', P('categories'), upload.categoryImage, async (req, res) => {
+  if (!req.file) throw HttpError.badRequest('Choose an image');
+  ok(res, { url: publicUrl(req.file) }, 201);
 });
 
 adminRouter.post('/uploads/banner', P('cms'), upload.banner, async (req, res) => {

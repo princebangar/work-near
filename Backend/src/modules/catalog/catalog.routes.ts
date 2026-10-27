@@ -19,7 +19,7 @@ export async function categoriesWithCounts(filter: Record<string, unknown> = { a
     WorkerProfile.aggregate<{ _id: string; n: number }>([{ $match: { visible: true, restricted: false } }, { $group: { _id: '$category', n: { $sum: 1 } } }]),
   ]);
   const by = new Map(counts.map((c) => [c._id, c.n]));
-  return cats.map((c) => ({ id: c._id, name: c.name, nameHi: c.nameHi, icon: c.icon, tint: c.tint, skills: c.skills, active: c.active, workerCount: by.get(c._id) ?? 0 }));
+  return cats.map((c) => ({ id: c._id, name: c.name, nameHi: c.nameHi, icon: c.icon, image: c.image ?? '', tint: c.tint, skills: c.skills, active: c.active, workerCount: by.get(c._id) ?? 0 }));
 }
 
 catalogRouter.get('/categories', cachePublic(300), async (_req, res) => ok(res, await categoriesWithCounts()));

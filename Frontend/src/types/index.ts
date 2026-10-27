@@ -32,7 +32,7 @@ export interface OtpRequest { expiresIn: number; resendAfter: number; isRegister
 /** Fields accepted by PATCH /me. */
 export interface MePatch { name?: string; email?: string; language?: Lang; activeRole?: Role; city?: string; notif?: Partial<NotifPrefs> }
 
-export interface Category { id: ID; name: string; nameHi: string; icon: string; tint: string; skills: string[]; active: boolean; workerCount: number }
+export interface Category { id: ID; name: string; nameHi: string; icon: string; image?: string; tint: string; skills: string[]; active: boolean; workerCount: number }
 
 export type VerificationType = 'phone' | 'id' | 'id_address';
 export type SortBy = 'distance' | 'rating' | 'recent';

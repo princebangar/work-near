@@ -1,8 +1,10 @@
-import { useMemo, useState, type KeyboardEvent } from 'react';
-import { Check, LayoutGrid, Pencil, Plus, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { Check, ImagePlus, LayoutGrid, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { CategoryIcon } from '@/components/ui';
-import { useAdminCategories, useSaveCategory, useToggleCategory } from '@/api/admin';
+import { uploadCategoryImage, useAdminCategories, useSaveCategory, useToggleCategory } from '@/api/admin';
+import { errorMessage } from '@/api';
 import { cn, num } from '@/lib/format';
+import { mediaUrl } from '@/lib/media';
 import type { AdminCategory, CategoryInput } from '@/types/admin';
 import { Btn, DataTable, Drawer, EmptyBlock, ErrorBlock, Field, IconBtn, MicroLabel, PageHeader, SearchField, Switch, TextField, Toolbar, type Column } from '../components/kit';
 
@@ -10,9 +12,10 @@ import { Btn, DataTable, Drawer, EmptyBlock, ErrorBlock, Field, IconBtn, MicroLa
 const ICONS = ['zap', 'droplets', 'hammer', 'paint-roller', 'snowflake', 'sparkles', 'wrench', 'scissors', 'book-open', 'car', 'chef-hat', 'brick-wall', 'briefcase'] as const;
 const TINTS = ['#e0e7ff', '#dbeafe', '#cffafe', '#dcfce7', '#fef3c7', '#fde68a', '#ffedd5', '#ffe4e6', '#fce7f3', '#ede9fe', '#f1f5f9'];
 
-const Tile = ({ icon, tint, size = 40 }: { icon: string; tint: string; size?: number }) => (
-  <span className="grid shrink-0 place-items-center rounded-xl text-slate-800 ring-1 ring-black/5" style={{ background: tint || '#e0e7ff', width: size, height: size }}>
-    <CategoryIcon name={icon} size={Math.round(size * 0.5)} />
+/** Category tile: the uploaded picture when there is one, otherwise the icon on its tint. */
+const Tile = ({ icon, image, tint, size = 40 }: { icon: string; image?: string; tint: string; size?: number }) => (
+  <span className="grid shrink-0 place-items-center overflow-hidden rounded-xl text-slate-800 ring-1 ring-black/5" style={{ background: tint || '#e0e7ff', width: size, height: size }}>
+    {image ? <img src={image.startsWith('blob:') ? image : mediaUrl(image)} alt="" className="size-full object-cover" /> : <CategoryIcon name={icon} size={Math.round(size * 0.5)} />}
   </span>
 );
 
@@ -36,7 +39,7 @@ export function CategoriesPage() {
       mobile: 'title',
       cell: (c) => (
         <div className="flex items-center gap-3">
-          <Tile icon={c.icon} tint={c.tint} />
+          <Tile icon={c.icon} image={c.image} tint={c.tint} />
           <div className="min-w-0">
             <p className="font-semibold text-ink">{c.name}</p>
             <p className="font-mono text-[11px] text-ink-3">{c.id}</p>
@@ -111,12 +114,33 @@ function CategoryDrawer({ cat, onClose }: { cat: AdminCategory | null; onClose: 
     name: cat?.name ?? '',
     nameHi: cat?.nameHi ?? '',
     icon: cat?.icon ?? 'briefcase',
+    image: cat?.image ?? '',
     tint: cat?.tint ?? TINTS[0]!,
     skills: cat?.skills ?? [],
     active: cat?.active ?? true,
   }));
   const [skill, setSkill] = useState('');
   const [err, setErr] = useState<string | null>(null);
+  // Icon or picture. A newly picked file stays local (preview only) and is uploaded when the form is saved.
+  const [kind, setKind] = useState<'icon' | 'image'>(cat?.image ? 'image' : 'icon');
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!file) return setPreview('');
+    const u = URL.createObjectURL(file);
+    setPreview(u);
+    return () => URL.revokeObjectURL(u);
+  }, [file]);
+  const shownImage = kind === 'image' ? preview || f.image : '';
+  const pickFile = (fl: File | undefined) => {
+    if (!fl) return;
+    if (!fl.type.startsWith('image/')) return setErr('Choose an image file (JPG, PNG, WEBP, GIF or AVIF)');
+    if (fl.size > 5 * 1024 * 1024) return setErr('Image too large (max 5 MB)');
+    setErr(null);
+    setFile(fl);
+  };
   const set = <K extends keyof CategoryInput>(k: K, v: CategoryInput[K]) => setF((p) => ({ ...p, [k]: v }));
 
   const addSkill = () => {
@@ -137,11 +161,23 @@ function CategoryDrawer({ cat, onClose }: { cat: AdminCategory | null; onClose: 
     } else if (e.key === 'Backspace' && !skill && f.skills.length) set('skills', f.skills.slice(0, -1));
   };
 
-  const submit = () => {
+  const submit = async () => {
     const name = f.name.trim();
     if (name.length < 2) return setErr('Name must be at least 2 characters');
+    if (kind === 'image' && !file && !f.image) return setErr('Choose an image, or switch back to Icon');
     setErr(null);
-    const body = { ...f, name, nameHi: f.nameHi.trim(), skills: skill.trim() ? [...f.skills, skill.trim()] : f.skills };
+    let image = kind === 'image' ? f.image : '';
+    if (kind === 'image' && file) {
+      setUploading(true);
+      try {
+        image = await uploadCategoryImage(file);
+      } catch (e) {
+        setUploading(false);
+        return setErr(errorMessage(e));
+      }
+      setUploading(false);
+    }
+    const body = { ...f, image, name, nameHi: f.nameHi.trim(), skills: skill.trim() ? [...f.skills, skill.trim()] : f.skills };
     save.mutate({ id: cat?.id, body }, { onSuccess: onClose });
   };
 
@@ -154,14 +190,14 @@ function CategoryDrawer({ cat, onClose }: { cat: AdminCategory | null; onClose: 
       footer={
         <>
           <Btn tone="ghost" onClick={onClose}>Cancel</Btn>
-          <Btn tone="primary" loading={save.isPending} onClick={submit}>{cat ? 'Save changes' : 'Create category'}</Btn>
+          <Btn tone="primary" loading={save.isPending || uploading} onClick={submit}>{cat ? 'Save changes' : 'Create category'}</Btn>
         </>
       }
     >
       <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="space-y-5">
         {/* Live preview */}
         <div className="flex items-center gap-4 rounded-2xl border border-line bg-surface-2/60 p-4">
-          <Tile icon={f.icon} tint={f.tint} size={56} />
+          <Tile icon={f.icon} image={shownImage} tint={f.tint} size={56} />
           <div className="min-w-0">
             <p className="truncate text-lg font-bold text-ink">{f.name || 'Category name'}</p>
             <p lang="hi" className="truncate text-sm text-ink-2">{f.nameHi || 'हिंदी नाम'}</p>
@@ -174,6 +210,38 @@ function CategoryDrawer({ cat, onClose }: { cat: AdminCategory | null; onClose: 
           <TextField label="Name (Hindi)" lang="hi" value={f.nameHi} maxLength={40} onChange={(e) => set('nameHi', e.target.value)} placeholder="e.g. इलेक्ट्रीशियन" />
         </div>
 
+        <Field label="Show as" hint="Use one of the icons, or upload your own picture (shown instead of the icon in the app).">
+          <div role="radiogroup" aria-label="Show as" className="inline-flex rounded-xl border border-line bg-surface-2 p-1">
+            {(['icon', 'image'] as const).map((k) => (
+              <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => { setKind(k); setErr(null); }}
+                className={cn('rounded-lg px-4 py-1.5 text-sm font-semibold transition', kind === k ? 'bg-surface text-ink shadow-sm' : 'text-ink-2 hover:text-ink')}>
+                {k === 'icon' ? 'Icon' : 'Image'}
+              </button>
+            ))}
+          </div>
+        </Field>
+
+        {kind === 'image' ? (
+          <Field label="Image" hint="Square works best (at least 256×256). JPG, PNG, WEBP, GIF or AVIF, up to 5 MB — saved as WEBP. Uploaded when you save.">
+            <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { pickFile(e.target.files?.[0]); e.target.value = ''; }} />
+            {shownImage ? (
+              <div className="flex items-center gap-4 rounded-2xl border border-line p-3">
+                <img src={shownImage.startsWith('blob:') ? shownImage : mediaUrl(shownImage)} alt="" className="size-20 rounded-xl object-cover ring-1 ring-black/5" />
+                <div className="flex flex-wrap gap-2">
+                  <Btn tone="ghost" icon={<ImagePlus size={16} />} onClick={() => fileRef.current?.click()}>Change</Btn>
+                  <Btn tone="ghost" icon={<Trash2 size={16} />} onClick={() => { setFile(null); set('image', ''); }}>Remove</Btn>
+                </div>
+              </div>
+            ) : (
+              <button type="button" onClick={() => fileRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickFile(e.dataTransfer.files?.[0]); }}
+                className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-line px-4 py-8 text-ink-2 transition hover:border-primary hover:text-primary">
+                <ImagePlus size={26} />
+                <span className="text-sm font-semibold">Click or drop an image</span>
+              </button>
+            )}
+          </Field>
+        ) : (
         <Field label="Icon">
           <div role="radiogroup" aria-label="Icon" className="grid grid-cols-5 gap-2 sm:grid-cols-7">
             {ICONS.map((i) => (
@@ -192,6 +260,7 @@ function CategoryDrawer({ cat, onClose }: { cat: AdminCategory | null; onClose: 
             ))}
           </div>
         </Field>
+        )}
 
         <Field label="Tile colour" hint="Pastel tints keep icons readable in light and dark mode.">
           <div className="flex flex-wrap items-center gap-2">

@@ -220,7 +220,7 @@ export const useReviewVerification = () =>
 // The backend validates PATCH bodies with `schema.partial()` over fields that have zod defaults, so any field
 // left out is RESET to its default (e.g. PATCH {active} wipes a category's icon, Hindi name and skills).
 // We therefore always send the complete object, merged from the cached row.
-const categoryInput = (c: A.AdminCategory): A.CategoryInput => ({ name: c.name, nameHi: c.nameHi, icon: c.icon, tint: c.tint, skills: c.skills, active: c.active });
+const categoryInput = (c: A.AdminCategory): A.CategoryInput => ({ name: c.name, nameHi: c.nameHi, icon: c.icon, image: c.image ?? '', tint: c.tint, skills: c.skills, active: c.active });
 const bannerInput = (b: A.AdminBanner): A.BannerInput => ({ title: b.title, subtitle: b.subtitle, tint: b.tint, link: b.link ?? '', active: b.active, sort: b.sort });
 const faqInput = (f: A.AdminFaq): A.FaqInput => ({ q: f.q, a: f.a, active: f.active, sort: f.sort });
 function fullBody<T extends { id: string }, I>(qc: QueryClient, key: QueryKey, id: string, toInput: (x: T) => I, patch: Partial<I>): Partial<I> {
@@ -229,6 +229,12 @@ function fullBody<T extends { id: string }, I>(qc: QueryClient, key: QueryKey, i
 }
 
 // ---------- Categories ----------
+/** Uploads a category picture (server converts it to WEBP) and returns its URL — called from the form's Save. */
+export async function uploadCategoryImage(file: File) {
+  const form = new FormData();
+  form.append('image', file);
+  return (await adminHttp.upload<{ url: string }>('/admin/uploads/category', form)).url;
+}
 export const useAdminCategories = (enabled = true) =>
   useQuery({ queryKey: ak.categories, queryFn: ({ signal }) => adminHttp.get<A.AdminCategory[]>('/admin/categories', undefined, signal), staleTime: 5 * 60_000, enabled });
 

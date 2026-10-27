@@ -1,7 +1,9 @@
 import { mkdirSync, openSync, readSync, closeSync, unlinkSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import multer from 'multer';
+import sharp from 'sharp';
 import type { RequestHandler } from 'express';
 import { env } from '../config/env.js';
 import { HttpError } from './core.js';
@@ -16,13 +18,17 @@ export const PRIVATE_ROOT = path.resolve(env.PRIVATE_UPLOAD_DIR);
 
 const IMAGE = ['image/jpeg', 'image/png', 'image/webp'];
 const DOC = [...IMAGE, 'application/pdf'];
-const EXT: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'application/pdf': '.pdf' };
+// Public photos accept a few more formats — they are all re-encoded to WEBP before being stored.
+const PHOTO = [...IMAGE, 'image/gif', 'image/avif'];
+const EXT: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/avif': '.avif', 'application/pdf': '.pdf' };
 
 // Magic bytes — the browser-supplied MIME type is not trusted on its own.
 const SIGNATURES: [string, (b: Buffer) => boolean][] = [
   ['image/jpeg', (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff],
   ['image/png', (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))],
   ['image/webp', (b) => b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WEBP'],
+  ['image/gif', (b) => b.subarray(0, 4).toString() === 'GIF8'],
+  ['image/avif', (b) => b.subarray(4, 8).toString() === 'ftyp' && ['avif', 'avis'].includes(b.subarray(8, 12).toString())],
   ['application/pdf', (b) => b.subarray(0, 5).toString() === '%PDF-'],
 ];
 function sniff(file: string) {
@@ -33,7 +39,7 @@ function sniff(file: string) {
   return SIGNATURES.find(([, test]) => test(b))?.[0];
 }
 
-type Kind = 'avatars' | 'portfolio' | 'chat' | 'verification' | 'evidence' | 'banners';
+type Kind = 'avatars' | 'portfolio' | 'chat' | 'verification' | 'evidence' | 'banners' | 'categories';
 const PRIVATE_KINDS: Kind[] = ['verification', 'evidence'];
 
 function uploader(kind: Kind, allowed: string[]) {
@@ -45,7 +51,7 @@ function uploader(kind: Kind, allowed: string[]) {
       filename: (_req, f, cb) => cb(null, `${Date.now().toString(36)}-${randomBytes(8).toString('hex')}${EXT[f.mimetype] ?? ''}`),
     }),
     limits: { fileSize: env.MAX_UPLOAD_MB * 1024 * 1024, files: 6 },
-    fileFilter: (_req, f, cb) => (allowed.includes(f.mimetype) ? cb(null, true) : cb(HttpError.badRequest('Only JPG, PNG, WEBP' + (allowed.includes('application/pdf') ? ' or PDF' : '') + ' files are allowed', 'BAD_FILE_TYPE'))),
+    fileFilter: (_req, f, cb) => (allowed.includes(f.mimetype) ? cb(null, true) : cb(HttpError.badRequest('Only JPG, PNG, WEBP' + (allowed.includes('image/gif') ? ', GIF, AVIF' : '') + (allowed.includes('application/pdf') ? ' or PDF' : '') + ' files are allowed', 'BAD_FILE_TYPE'))),
   });
 }
 
@@ -65,15 +71,41 @@ function guard(kind: Kind, allowed: string[], field: string, max: number): Reque
           return next(HttpError.badRequest('File content does not match its type', 'BAD_FILE_TYPE'));
         }
       }
-      next();
+      if (PRIVATE_KINDS.includes(kind)) return next();
+      toWebp(files, kind === 'banners' ? 1920 : kind === 'categories' ? 512 : 1600).then(() => next(), (e: unknown) => {
+        files.forEach((x) => removeFile(x.path));
+        next(e instanceof HttpError ? e : HttpError.badRequest('Could not read this image', 'BAD_FILE_TYPE'));
+      });
     });
 }
 
+/**
+ * Re-encodes public photos to WEBP in place (any accepted format in → one .webp file out, original deleted), fixing
+ * phone EXIF rotation and capping the long side. Multer's file object is updated so publicUrl() points at the .webp.
+ */
+async function toWebp(files: Express.Multer.File[], maxSide: number) {
+  for (const f of files) {
+    const out = path.join(path.dirname(f.path), path.parse(f.path).name + '.webp');
+    // read into memory first so a .webp input can be overwritten by its own re-encode
+    const info = await sharp(await readFile(f.path), { animated: false })
+      .rotate()
+      .resize(maxSide, maxSide, { fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: 82 })
+      .toFile(out);
+    if (out !== f.path) removeFile(f.path);
+    f.path = out;
+    f.filename = path.basename(out);
+    f.mimetype = 'image/webp';
+    f.size = info.size;
+  }
+}
+
 export const upload = {
-  avatar: guard('avatars', IMAGE, 'photo', 1),
-  portfolio: guard('portfolio', IMAGE, 'photos', 6),
-  chatImage: guard('chat', IMAGE, 'image', 1),
-  banner: guard('banners', IMAGE, 'image', 1),
+  avatar: guard('avatars', PHOTO, 'photo', 1),
+  portfolio: guard('portfolio', PHOTO, 'photos', 6),
+  chatImage: guard('chat', PHOTO, 'image', 1),
+  banner: guard('banners', PHOTO, 'image', 1),
+  categoryImage: guard('categories', PHOTO, 'image', 1),
   verification: guard('verification', DOC, 'documents', 4),
   evidence: guard('evidence', DOC, 'evidence', 3),
 };
