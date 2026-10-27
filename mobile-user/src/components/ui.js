@@ -90,8 +90,8 @@ export function Input({ label, error, hint, left, disabled, style, inputStyle, .
       <View
         style={[
           s.inputBox,
-          { backgroundColor: disabled ? c.surface2 : c.surface, borderColor: error ? c.danger : focus ? c.primary : c.line },
-          focus && !error && { shadowColor: c.primary, shadowOpacity: 0.15, shadowRadius: 4, elevation: 0 },
+          // focus only changes colours — toggling shadow props here rebuilt the native view and closed the keyboard
+          { backgroundColor: disabled ? c.surface2 : c.surface, borderColor: error ? c.danger : focus ? c.primary : c.line, borderWidth: focus ? 1.5 : 1 },
         ]}
       >
         {left}
@@ -273,29 +273,32 @@ export function TopBar({ title, back = true, right, onBack }) {
 }
 
 // ---------- Sheets & dialogs ----------
+// The enter animation starts from the Modal's onShow: started on mount it mostly ran before the native modal window was
+// on screen, so popups looked like they jumped in. Returns [value, mounted, onShow].
 function useModalAnim(open, onHidden) {
   const v = useRef(new Animated.Value(0)).current;
   const [mounted, setMounted] = useState(open);
+  const onShow = () => Animated.timing(v, { toValue: 1, duration: 300, easing: Easing.bezier(0.16, 1, 0.3, 1), useNativeDriver: true }).start();
   useEffect(() => {
     if (open) {
-      setMounted(true);
-      Animated.timing(v, { toValue: 1, duration: 250, easing: Easing.bezier(0.2, 0.8, 0.2, 1), useNativeDriver: true }).start();
+      if (mounted) onShow(); // re-opened while still closing
+      else setMounted(true);
     } else if (mounted) {
       Animated.timing(v, { toValue: 0, duration: 180, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(() => { setMounted(false); onHidden?.(); });
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-  return [v, mounted];
+  return [v, mounted, onShow];
 }
 
 /** Bottom sheet (web: <Sheet>): dimmed backdrop, slides up, grab handle + title + close. */
 export function Sheet({ open, onClose, title, children, scroll = true }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
-  const [v, mounted] = useModalAnim(open);
+  const [v, mounted, onShow] = useModalAnim(open);
   if (!mounted) return null;
   const Body = scroll ? ScrollView : View;
   return (
-    <Modal visible transparent statusBarTranslucent navigationBarTranslucent animationType="none" onRequestClose={onClose}>
+    <Modal visible transparent statusBarTranslucent navigationBarTranslucent animationType="none" onShow={onShow} onRequestClose={onClose}>
       <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)', opacity: v }]}>
           <Pressable style={{ flex: 1 }} onPress={onClose} />
@@ -327,10 +330,10 @@ export function Sheet({ open, onClose, title, children, scroll = true }) {
 /** Small centred popup (web: CenterDialog in account.tsx) — pops in at the middle of the screen. */
 export function CenterDialog({ open, onClose, title, children }) {
   const c = useColors();
-  const [v, mounted] = useModalAnim(open);
+  const [v, mounted, onShow] = useModalAnim(open);
   if (!mounted) return null;
   return (
-    <Modal visible transparent statusBarTranslucent navigationBarTranslucent animationType="none" onRequestClose={onClose}>
+    <Modal visible transparent statusBarTranslucent navigationBarTranslucent animationType="none" onShow={onShow} onRequestClose={onClose}>
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)', opacity: v }]}>
           <Pressable style={{ flex: 1 }} onPress={onClose} />
@@ -354,16 +357,17 @@ export function CenterDialog({ open, onClose, title, children }) {
 
 /**
  * Centred confirm popup (log out, delete account): icon in a soft ring, title, message, optional extra content
- * (e.g. a "type DELETE" field), Cancel + confirm. Solid card on a dark backdrop in both themes.
+ * (e.g. a "type DELETE" field), Cancel + confirm. Solid card on a dark backdrop in both themes; app green by default.
+ * The body scrolls, so the buttons stay reachable when the keyboard is up.
  */
-export function ConfirmDialog({ open, onClose, icon: I, tone = 'danger', title, message, confirmLabel, cancelLabel, confirmIcon: CI, onConfirm, loading, disabled, children }) {
+export function ConfirmDialog({ open, onClose, icon: I, tone = 'primary', title, message, confirmLabel, cancelLabel, confirmIcon: CI, onConfirm, loading, disabled, children }) {
   const c = useColors();
-  const [v, mounted] = useModalAnim(open);
+  const [v, mounted, onShow] = useModalAnim(open);
   if (!mounted) return null;
   const accent = tone === 'danger' ? c.danger : c.primary;
   const close = loading ? undefined : onClose;
   return (
-    <Modal visible transparent statusBarTranslucent navigationBarTranslucent animationType="none" onRequestClose={close}>
+    <Modal visible transparent statusBarTranslucent navigationBarTranslucent animationType="none" onShow={onShow} onRequestClose={close}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.65)', opacity: v }]}>
           <Pressable style={{ flex: 1 }} onPress={close} />
@@ -371,11 +375,11 @@ export function ConfirmDialog({ open, onClose, icon: I, tone = 'danger', title, 
         <Animated.View
           accessibilityRole="alert"
           style={{
-            width: '100%', maxWidth: 360, borderRadius: 28, overflow: 'hidden', backgroundColor: c.surface, borderWidth: 1, borderColor: alpha(c.line, 0.6), elevation: 16,
-            opacity: v, transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }],
+            width: '100%', maxWidth: 360, maxHeight: '92%', borderRadius: 28, overflow: 'hidden', backgroundColor: c.surface, borderWidth: 1, borderColor: alpha(c.line, 0.6), elevation: 16,
+            opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) }, { scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }],
           }}
         >
-          <View style={{ alignItems: 'center', paddingHorizontal: 24, paddingTop: 28, paddingBottom: 22 }}>
+          <ScrollView keyboardShouldPersistTaps="handled" bounces={false} contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 24, paddingTop: 28, paddingBottom: 22 }}>
             <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 120, backgroundColor: alpha(accent, 0.06) }} />
             {I && (
               <View style={{ width: 76, height: 76, borderRadius: 38, padding: 6, marginBottom: 16, borderWidth: 1, borderColor: alpha(accent, 0.22), backgroundColor: c.surface }}>
@@ -395,10 +399,10 @@ export function ConfirmDialog({ open, onClose, icon: I, tone = 'danger', title, 
               <Pressable onPress={onConfirm} disabled={loading || disabled} accessibilityRole="button"
                 style={({ pressed }) => [{ flex: 1, height: 50, borderRadius: 16, backgroundColor: accent, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.5 : 1, elevation: 3 }, pressed && { transform: [{ scale: 0.96 }] }]}>
                 {loading ? <ActivityIndicator size="small" color="#fff" /> : CI ? <CI size={18} color="#fff" strokeWidth={2.4} /> : null}
-                <Txt w={800} size={16} c="#ffffff" numberOfLines={1}>{confirmLabel}</Txt>
+                <Txt w={800} size={15} c="#ffffff" numberOfLines={1} adjustsFontSizeToFit style={{ flexShrink: 1 }}>{confirmLabel}</Txt>
               </Pressable>
             </View>
-          </View>
+          </ScrollView>
         </Animated.View>
       </KeyboardAvoidingView>
     </Modal>

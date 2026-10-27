@@ -242,17 +242,17 @@ export function Account() {
         </Group>
 
         <Group title={t('legal')}>
-          <Row icon={FileText} label={t('termsOfUse')} onPress={() => router.push('/legal/terms')} />
+          <Row icon={FileText} label={t('termsOfUse')} onPress={() => router.push(isWorker ? '/legal/terms-worker' : '/legal/terms')} />
           <Row icon={Shield} label={t('privacyPolicy')} onPress={() => router.push('/legal/privacy')} />
           <Row icon={CreditCard} label={t('refundPolicy')} onPress={() => router.push('/legal/refund')} />
-          <Row icon={ShieldCheck} label={t('safetyGuidelines')} onPress={() => router.push('/legal/safety')} />
+          <Row icon={ShieldCheck} label={t('safetyGuidelines')} onPress={() => router.push(isWorker ? '/legal/safety-worker' : '/legal/safety')} />
         </Group>
 
         <View style={{ paddingHorizontal: 20, paddingTop: 28, gap: 10 }}>
           <Button size="lg" block icon={LogOut} style={{ borderRadius: 16 }} onPress={() => setConfirm('logout')}>{t('logout')}</Button>
           <Button variant="ghost" block icon={Trash2} onPress={() => setConfirm('delete')}>{t('deleteAccount')}</Button>
         </View>
-        <Txt size={12} c="ink3" style={{ paddingTop: 8, paddingBottom: 8, textAlign: 'center' }}>Work Near v{support.version} · {t('tagline')}</Txt>
+        <Txt size={12} c="ink3" style={{ paddingTop: 8, paddingBottom: 8, textAlign: 'center' }}>Work Near v{support.version}</Txt>
       </ScrollView>
       <HeaderScrim height={heroH}><HeroBg /></HeaderScrim>
 

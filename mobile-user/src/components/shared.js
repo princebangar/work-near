@@ -1,10 +1,10 @@
 // Native port of Frontend/src/components/shared.tsx.
-import { memo, useState } from 'react';
+import { memo, useCallback, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MapPin, X } from 'lucide-react-native';
+import { Camera, ChevronRight, Images, MapPin, X } from 'lucide-react-native';
 import { Avatar, Badge, Button, Card, Chip, Rating, Sheet, Textarea, Txt, VerifiedBadge } from './ui';
 import { km } from '@/lib/format';
 import { mediaUrl } from '@/lib/media';
@@ -113,6 +113,41 @@ export function ReviewSheet({ open, onClose, workerId, workerName }) {
   );
 }
 
+/**
+ * Camera / gallery chooser. `const { choose, sheet } = usePhotoSource()` — render `{sheet}` once in the screen;
+ * `await choose()` opens a bottom sheet and resolves to 'camera', 'gallery', or null if dismissed.
+ */
+export function usePhotoSource() {
+  const t = useT();
+  const c = useColors();
+  const [open, setOpen] = useState(false);
+  const resolver = useRef(null);
+  const settle = useCallback((v) => {
+    setOpen(false);
+    const r = resolver.current;
+    resolver.current = null;
+    r?.(v);
+  }, []);
+  const choose = useCallback(() => new Promise((res) => { resolver.current = res; setOpen(true); }), []);
+  const row = (icon, label, value) => {
+    const I = icon;
+    return (
+      <Pressable onPress={() => settle(value)} style={({ pressed }) => [sh.sourceRow, { backgroundColor: pressed ? c.surface2 : 'transparent' }]}>
+        <View style={[sh.sourceIcon, { backgroundColor: c.primarySoft }]}><I size={22} color={c.primary} /></View>
+        <Txt w={600} size={16} style={{ flex: 1 }}>{label}</Txt>
+        <ChevronRight size={20} color={c.ink3} />
+      </Pressable>
+    );
+  };
+  const sheet = (
+    <Sheet open={open} onClose={() => settle(null)} title={t('addPhoto')} scroll={false}>
+      {row(Camera, t('takePhoto'), 'camera')}
+      {row(Images, t('chooseFromGallery'), 'gallery')}
+    </Sheet>
+  );
+  return { choose, sheet };
+}
+
 /** Full-screen photo viewer (portfolio / chat images). */
 export function ImageViewer({ src, onClose }) {
   const insets = useSafeAreaInsets();
@@ -128,3 +163,8 @@ export function ImageViewer({ src, onClose }) {
     </Modal>
   );
 }
+
+const sh = StyleSheet.create({
+  sourceRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 12, paddingHorizontal: 4, borderRadius: 14 },
+  sourceIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+});

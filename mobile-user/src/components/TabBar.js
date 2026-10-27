@@ -1,6 +1,6 @@
 // Floating bottom nav: white pill bar, uppercase bold labels, unread badge on Chats, hide on scroll-down / show on
-// scroll-up. Outline icons only (no filled shapes, no green): the selected tab is dark ink with a heavier stroke, a bold
-// label and a small dot under it; idle tabs are light grey.
+// scroll-up. Outline icons only, never filled (HelloParth Food bar style): the selected tab is brand green with a heavier
+// stroke, a bold label and a slight scale-up; idle tabs are grey.
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -80,7 +80,7 @@ export function TabBar() {
       >
         {tabs.map(({ to, icon: I, label }, i) => {
           const on = i === active;
-          const color = on ? c.ink : c.ink3;
+          const color = on ? c.primary : c.ink2;
           return (
             <Pressable
               key={to}
@@ -90,7 +90,7 @@ export function TabBar() {
               style={st.item}
             >
               <View style={{ transform: [{ scale: on ? 1.1 : 1 }] }}>
-                <I size={23} strokeWidth={on ? 2.4 : 1.8} color={color} />
+                <I size={23} strokeWidth={on ? 2.3 : 1.8} color={color} />
                 {to === '/chats' && unread > 0 && (
                   <View style={[st.badge, { backgroundColor: c.danger, borderColor: dark ? c.surface3 : c.surface }]}>
                     <Txt w={700} size={10} c="#ffffff">{unread > 99 ? '99+' : unread}</Txt>
@@ -98,7 +98,6 @@ export function TabBar() {
                 )}
               </View>
               <Txt w={on ? 800 : 600} size={10} c={color} style={{ letterSpacing: 0.2 }}>{t(label).toUpperCase()}</Txt>
-              <View style={[st.dot, { backgroundColor: on ? c.ink : 'transparent' }]} />
             </Pressable>
           );
         })}
@@ -114,6 +113,5 @@ const st = StyleSheet.create({
     shadowColor: '#000', shadowRadius: 20, shadowOffset: { width: 0, height: 15 }, elevation: 14,
   },
   item: { flex: 1, height: 60, alignItems: 'center', justifyContent: 'center', gap: 3, zIndex: 10 },
-  dot: { width: 4, height: 4, borderRadius: 2 },
   badge: { position: 'absolute', top: -6, right: -10, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
 });

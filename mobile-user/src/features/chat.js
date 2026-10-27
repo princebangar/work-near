@@ -9,7 +9,7 @@ import {
 } from 'lucide-react-native';
 import { Avatar, Badge, Button, EmptyState, ErrorState, IconButton, Sheet, Skeleton, TopBar, Txt } from '@/components/ui';
 import { PullRefresh } from '@/components/PullRefresh';
-import { ImageViewer, ReportSheet, ReviewSheet } from '@/components/shared';
+import { ImageViewer, ReportSheet, ReviewSheet, usePhotoSource } from '@/components/shared';
 import { TAB_BAR_SPACE, useTabScroll } from '@/components/TabBar';
 import {
   activeThread, errorMessage, isApiError, useConversations, useLoadOlder, useMarkConversationRead, useSendImage, useSendMessage, useThread, useUpdateConversation,
@@ -161,6 +161,7 @@ export function ChatThread() {
   const [img, setImg] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [visible, setVisible] = useState(AppState.currentState === 'active');
+  const { choose, sheet: sourceSheet } = usePhotoSource();
   const msgs = thread.data?.items;
 
   // Tell realtime handlers which thread is on screen.
@@ -203,7 +204,9 @@ export function ChatThread() {
   };
   const retry = (m) => send.mutate({ text: m.text, tmpId: m.id });
   const pickPhoto = async () => {
-    const [f] = await pickFiles();
+    const source = await choose();
+    if (!source) return;
+    const [f] = await pickFiles({ source });
     if (f) setImg(f);
   };
   const sendPhoto = (caption) => {
@@ -225,7 +228,7 @@ export function ChatThread() {
   const disabledReason = !conv ? null : conv.blocked ? 'blocked' : conv.blockedBy ? 'blockedBy' : !chatOn ? 'off' : null;
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: c.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: c.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <TopBar
         title={conv ? (
           <Pressable onPress={() => conv.peer.role === 'worker' && router.push(`/worker/${conv.peer.id}`)} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 }}>
@@ -333,6 +336,7 @@ export function ChatThread() {
       {conv && <ReviewSheet open={sheet === 'review'} onClose={() => setSheet(null)} workerId={conv.peer.id} workerName={conv.peer.name} />}
       <ImageComposer file={img} onClose={() => setImg(null)} onSend={sendPhoto} />
       <ImageViewer src={viewing} onClose={() => setViewing(null)} />
+      {sourceSheet}
     </KeyboardAvoidingView>
   );
 }

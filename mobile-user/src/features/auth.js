@@ -144,8 +144,7 @@ function Sheet({ children }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
   return (
-    <View style={{ flex: 1, marginTop: -32, borderTopLeftRadius: 32, borderTopRightRadius: 32, backgroundColor: c.surface, paddingHorizontal: 24, paddingTop: 14, paddingBottom: 16 + insets.bottom }}>
-      <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: c.line, marginBottom: 18 }} />
+    <View style={{ flex: 1, marginTop: -32, borderTopLeftRadius: 32, borderTopRightRadius: 32, backgroundColor: c.surface, paddingHorizontal: 24, paddingTop: 30, paddingBottom: 16 + insets.bottom }}>
       {children}
     </View>
   );
@@ -190,6 +189,9 @@ export function Login() {
           </View>
           {mobile.length === 10 && !valid && <Txt size={14} c="danger" style={{ marginTop: 8 }}>{t('invalidMobile')}</Txt>}
           {m.error && <Txt size={14} c="danger" style={{ marginTop: 8 }}>{fieldErrors(m.error).mobile ?? errorMessage(m.error)}</Txt>}
+          <Button size="lg" block style={[st.cta, { marginTop: 20 }]} disabled={!valid} loading={m.isPending} onPress={submit}>
+            {t('sendOtp')}<ArrowRight size={20} color={c.onPrimary} />
+          </Button>
 
           <View style={{ marginTop: 24, flexDirection: 'row', gap: 10 }}>
             {[[ShieldCheck, t('verifiedWorkers')], [BadgeIndianRupee, t('zeroCommission')], [MapPinned, `${t('within')} ${radius} KM`]].map(([Icon, label]) => (
@@ -203,9 +205,15 @@ export function Login() {
           </View>
 
           <View style={{ flex: 1, minHeight: 24 }} />
-          <Button size="lg" block style={st.cta} disabled={!valid} loading={m.isPending} onPress={submit}>
-            {t('sendOtp')}<ArrowRight size={20} color={c.onPrimary} />
-          </Button>
+          <Txt size={12} c="ink3" style={{ textAlign: 'center' }}>{t('byContinuing')}</Txt>
+          <View style={st.links}>
+            {[['terms', 'termsShort'], ['privacy', 'privacyShort'], ['support', 'supportShort']].map(([slug, key], i) => (
+              <View key={slug} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                {i > 0 && <View style={[st.linkDot, { backgroundColor: c.ink3 }]} />}
+                <Pressable hitSlop={8} onPress={() => router.push(`/legal/${slug}`)}><Txt w={700} size={12} c="ink2" style={st.linkText}>{t(key)}</Txt></Pressable>
+              </View>
+            ))}
+          </View>
         </Sheet>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -444,6 +452,9 @@ const st = StyleSheet.create({
   backBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', alignItems: 'center', justifyContent: 'center' },
   mobileBox: { height: 58, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 2, paddingHorizontal: 16 },
   cta: { height: 56, borderRadius: 16 },
+  links: { marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  linkDot: { width: 4, height: 4, borderRadius: 2 },
+  linkText: { textTransform: 'uppercase', letterSpacing: 0.9 },
   roleCard: { flex: 1, alignItems: 'center', borderRadius: 20, borderWidth: 2, paddingHorizontal: 12, paddingTop: 22, paddingBottom: 18 },
   roleCheck: { position: 'absolute', top: 10, right: 10, width: 20, height: 20, borderRadius: 10, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   roleIcon: { width: 60, height: 60, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },

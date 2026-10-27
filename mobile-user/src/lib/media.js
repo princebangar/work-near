@@ -18,13 +18,23 @@ export function checkFile(file, maxMb = 5, allowPdf = false) {
 }
 
 /**
- * Native replacement for the web's hidden <input type="file">: photo library for images, document picker when PDFs
- * are allowed too. Returns validated files as { uri, name, mimeType, size }; invalid ones are rejected with a toast.
+ * Native replacement for the web's hidden <input type="file">: photo library for images, camera capture when
+ * `source: 'camera'`, document picker when PDFs are allowed too. Returns validated files as
+ * { uri, name, mimeType, size }; invalid ones are rejected with a toast.
  */
-export async function pickFiles({ multiple = false, allowPdf = false, max } = {}) {
+export async function pickFiles({ multiple = false, allowPdf = false, max, source = 'gallery' } = {}) {
   if (max !== undefined && max <= 0) return [];
   let picked = [];
-  if (allowPdf) {
+  if (source === 'camera') {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) { toast('Allow camera access to take a photo', 'error'); return []; }
+    const r = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85 });
+    if (r.canceled) return [];
+    picked = r.assets.map((a, i) => {
+      const name = a.fileName || `photo-${Date.now()}-${i}.jpg`;
+      return { uri: a.uri, name, mimeType: a.mimeType || extType(name) || 'image/jpeg', size: a.fileSize };
+    });
+  } else if (allowPdf) {
     const r = await DocumentPicker.getDocumentAsync({ type: [...IMAGE_TYPES, 'application/pdf'], multiple, copyToCacheDirectory: true });
     if (r.canceled) return [];
     picked = r.assets.map((a) => ({ uri: a.uri, name: a.name, mimeType: a.mimeType || extType(a.name), size: a.size }));

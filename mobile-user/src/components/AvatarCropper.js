@@ -8,6 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Check, Minus, Plus, X } from 'lucide-react-native';
 import { toast } from '@/store';
 import { Button, Txt } from './ui';
+import { usePhotoSource } from './shared';
 
 const OUT = 600; // px of the saved avatar
 const MAX_ZOOM = 4;
@@ -120,26 +121,39 @@ function Cropper({ img, onCancel, onDone }) {
 export function useAvatarPicker() {
   const [img, setImg] = useState(null);
   const resolver = useRef(null);
+  const { choose, sheet } = usePhotoSource();
   const finish = useCallback((file) => {
     resolver.current?.(file);
     resolver.current = null;
     setImg(null);
   }, []);
   const pick = useCallback(async () => {
-    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+    const source = await choose();
+    if (!source) return null;
+    let r;
+    if (source === 'camera') {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) { toast('Allow camera access to take a photo', 'error'); return null; }
+      r = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
+    } else {
+      r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+    }
     if (r.canceled || !r.assets?.[0]) return null;
     const a = r.assets[0];
-    // any format the gallery gives (HEIC too) — the crop is re-encoded to JPEG and the server stores WEBP
+    // any format the gallery/camera gives (HEIC too) — the crop is re-encoded to JPEG and the server stores WEBP
     if (a.fileSize && a.fileSize > 20 * 1024 * 1024) { toast('Photo too large (max 20 MB)', 'error'); return null; }
     return new Promise((res) => {
       resolver.current = res;
       setImg({ uri: a.uri, width: a.width, height: a.height });
     });
-  }, []);
+  }, [choose]);
   const cropper = (
-    <Modal visible={!!img} animationType="slide" statusBarTranslucent navigationBarTranslucent onRequestClose={() => finish(null)}>
-      {img && <Cropper img={img} onCancel={() => finish(null)} onDone={finish} />}
-    </Modal>
+    <>
+      {sheet}
+      <Modal visible={!!img} animationType="slide" statusBarTranslucent navigationBarTranslucent onRequestClose={() => finish(null)}>
+        {img && <Cropper img={img} onCancel={() => finish(null)} onDone={finish} />}
+      </Modal>
+    </>
   );
   return { pick, cropper };
 }
