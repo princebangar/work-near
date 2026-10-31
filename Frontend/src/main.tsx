@@ -1,6 +1,6 @@
 import { StrictMode, lazy, type ComponentType } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createBrowserRouter, RouterProvider } from 'react-router';
+import { createBrowserRouter, Navigate, RouterProvider } from 'react-router';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/http';
 import { Toaster } from '@/components/ui';
@@ -47,6 +47,10 @@ const router = createBrowserRouter([
       { path: '/otp', element: <Otp /> },
       { path: '/role', element: <RoleSetup /> },
       { path: '/legal/:slug', element: <Legal /> },
+      // Short public URLs for Play Store / App Store listings → same CMS pages the native app shows
+      { path: '/terms', element: <Navigate to="/legal/terms" replace /> },
+      { path: '/privacy', element: <Navigate to="/legal/privacy" replace /> },
+      { path: '/support', element: <Navigate to="/legal/support" replace /> },
       {
         element: <RequireAuth />,
         children: [

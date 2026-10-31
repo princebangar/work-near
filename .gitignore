@@ -3,3 +3,8 @@
 # docs/    — internal reports
 scripts/
 docs/
+
+# Build outputs (APK/AAB) — large binaries, distribute via Play Console, not git
+releases/
+*.apk
+*.aab

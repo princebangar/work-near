@@ -151,6 +151,14 @@ export function Login() {
         <Button type="submit" size="lg" block className="mb-4 h-14 rounded-2xl text-base" disabled={!valid || !agree} loading={m.isPending}>
           {t('sendOtp')}<ArrowRight size={20} />
         </Button>
+        <nav className="mb-4 flex items-center justify-center gap-2.5">
+          {([['terms', 'termsShort'], ['privacy', 'privacyShort'], ['support', 'supportShort']] as const).map(([slug, key], i) => (
+            <span key={slug} className="flex items-center gap-2.5">
+              {i > 0 && <span aria-hidden className="size-1 rounded-full bg-ink-3" />}
+              <Link to={`/${slug}`} className="text-xs font-bold tracking-[0.075em] text-ink-2 uppercase">{t(key)}</Link>
+            </span>
+          ))}
+        </nav>
       </form>
     </div>
   );
